@@ -71,3 +71,4 @@ build/
 application.log
 tmp/
 .vercel
+.DS_Store
