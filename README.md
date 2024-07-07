@@ -6,10 +6,10 @@ Expressjs-Baileys is an implementation of [Baileys](https://github.com/WhiskeySo
 
 ## Features
 
-- [x] Multiple Account
-- [x] QR Code Generator
-- [x] Send Image Message (support for other file types will follow)
-- [x] Logout Request
+✅ Multiple Account
+✅ QR Code Generator
+✅ Send Image Message (support for other file types will follow)
+✅ Logout Request
 
 ## Installation
 
