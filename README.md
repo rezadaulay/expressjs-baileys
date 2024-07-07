@@ -31,17 +31,17 @@ npm run build
 ## Usage
 
 1. Every request must include `cred_id`, which serves as an identifier.
-2. To check connection status, send a GET request to `/get-state`.
-3. To get a login QR code, send a GET request to `/get-qrcode`.
-4. To log out, send a GET request to `/logout`.
-5. To send a text message, send a POST request to `/send-text-message` with the following JSON body:
+2. To check connection status, send a GET request to `/get-state?cred_id=xxx`.
+3. To get a login QR code, send a GET request to `/get-qrcode?cred_id=xxx`.
+4. To log out, send a GET request to `/logout?cred_id=xxx`.
+5. To send a text message, send a POST request to `/send-text-message?cred_id=xxx` with the following JSON body:
     ```json
     {
         "phone_number": "62823xxxxxxx",
         "message": "ini pesan multimedia sukses"
     }
     ```
-6. To send an image message, send a POST request to `/send-media-message` with the following JSON body:
+6. To send an image message, send a POST request to `/send-media-message?cred_id=xxx` with the following JSON body:
     ```json
     {
         "phone_number": "62823xxxxxxx",
