@@ -54,3 +54,9 @@ npm run build
 ## License
 
 This project is licensed under the MIT License.
+
+---
+
+## 🌍 FreePalestine 🇵🇸
+
+We stand in solidarity with the people of Palestine. Let's work together towards peace, justice, and freedom for all. #FreePalestine

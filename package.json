@@ -1,10 +1,12 @@
 {
   "name": "expressjs-baileys",
   "version": "1.0.0",
-  "description": "",
+  "description": "Expressjs-Baileys is an implementation of Baileys using express.js",
   "keywords": [
     "whatsapp",
     "js-whatsapp",
+    "expressjs",
+    "nodejs",
     "whatsapp-api",
     "whatsapp-web",
     "whatsapp-chat",
