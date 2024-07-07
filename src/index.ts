@@ -6,11 +6,15 @@ import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import QRCode from 'qrcode';
 import { body, validationResult } from "express-validator";
 import * as winston from "winston";  
+import dotenv from "dotenv";
 
 import Bull , { Job } from 'bull';
 import parsePhoneNumber, { PhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { Attachment } from './services/whatsapp/type';
 
+dotenv.config();
+const PORT = process.env.PORT || 5000;
+const app = express()
 
 // Create a logger instance
 const logger = winston.createLogger({
@@ -25,8 +29,9 @@ const logger = winston.createLogger({
 const credId = 'bot-1';
 let bot1WaServiceClass:WaService;
 const initWaServer = async (): Promise<WaService> => {
-    return new Promise((resolve) => {
-        (async () => {
+    // console.log('connecting')
+    return new Promise(async (resolve) => {
+        // (async () => {
             try {
                 bot1WaServiceClass = new WaService(credId, './wa-auth-info');
                 await bot1WaServiceClass.connect();
@@ -37,17 +42,17 @@ const initWaServer = async (): Promise<WaService> => {
                     }
                     await writeFileSync(`${dir}/qr-code-${credId}.txt`, value.qr.toString())
                 })
+                // console.log('resolve')
                 resolve(bot1WaServiceClass);
             } catch (error) {
                 logger.error(`Error initWaServer`, { error });
                 // logger.info(e);
             }
-        })()
+        // })()
     });
 }
 
 const runExpressServer = async () => {
-    const app = express()
     // const waMessageQueue = new Bull('wa-message', {
     //     defaultJobOptions: {
     //         attempts: 3
@@ -87,8 +92,8 @@ const runExpressServer = async () => {
     app.use(express.json());
     app.use(cors());
 
-    app.listen(process.env.PORT, () => {
-        logger.info(`Example app listening on port ${process.env.PORT}`)
+    app.listen(PORT, () => {
+        logger.info(`Whatsapp api app listening on port ${process.env.PORT}`)
     });
 
     // app.get('/', (req, res) => {
@@ -295,6 +300,7 @@ const runExpressServer = async () => {
             res.send('failed send message')
         }
     });
+    // return app;
 }
 
 const initWebServer = async () => {
@@ -302,4 +308,6 @@ const initWebServer = async () => {
     runExpressServer()
 }
 
-initWebServer()
+initWebServer();
+// console.log('connected')
+// export default app;

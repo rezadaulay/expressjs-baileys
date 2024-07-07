@@ -189,7 +189,7 @@ export default class WhatsApp extends EventEmitter {
             // this.setState(ConnectionState.idle)
       
             if (!sock) {
-              console.log('initializeConnection')
+              // console.log('initializeConnection')
               sock = await this.initializeConnection()
             }
 

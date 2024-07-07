@@ -69,3 +69,4 @@ wa-bots/
 build/
 application.log
 tmp/
+.vercel
