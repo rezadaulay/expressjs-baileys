@@ -65,6 +65,7 @@ dist/
 .netlify
 
 wa-auth-info/
+wa-auth-creds/
 wa-bots/
 build/
 application.log

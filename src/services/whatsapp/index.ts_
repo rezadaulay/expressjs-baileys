@@ -13,17 +13,25 @@ interface ConnectionObject {
   [key: string]: WASocket;
 }
 
+interface stateObject {
+  [key: string]: ConnectionState;
+}
+
 export default class WhatsApp extends EventEmitter {
     private connections: ConnectionObject;
-    private credId: string;
-    private credBaseDir: string = '';
-    private state: ConnectionState;
-    constructor (credId: string) {
+    private credId: string = 'default';
+    private credBaseDir: string = 'default';
+    private states: stateObject = {};
+    constructor () {
       super();
-      this.credId = credId;
-    //   this.credBaseDir = credBaseDir;
-      this.state = ConnectionState.idle;
+      // this.credId = credId;
+      // this.credBaseDir = credBaseDir;
+      // this.state = ConnectionState.idle;
       this.connections = {};
+    }
+
+    setCredId (credId: string): void {
+      this.credId = credId;
     }
 
     getCredId (): string {
@@ -31,7 +39,7 @@ export default class WhatsApp extends EventEmitter {
     }
 
     setCredBaseDir (credBaseDir: string): void {
-        this.credBaseDir = credBaseDir;
+      this.credBaseDir = credBaseDir;
     }
 
     getConnections (): { [key: string]: WASocket } {
@@ -82,10 +90,10 @@ export default class WhatsApp extends EventEmitter {
       }
     }
 
-    forceReset (): Promise<null> {
+    forceReset (credId: string): Promise<null> {
       return new Promise(async (resolve) => {
         // (async () => {
-          const dir = this.credBaseDir + '/' + this.getCredId();
+          const dir = this.credBaseDir + '/' + credId;
           if (await existsSync(dir)){
             await rmSync(dir, { recursive: true, force: true });
           }
@@ -95,19 +103,19 @@ export default class WhatsApp extends EventEmitter {
     }
 
     async setState (state: ConnectionState) {
-      if (state !== this.state) {
-        this.state = state;
+      if (state !== this.states[this.getCredId()]) {
+        this.states[this.getCredId()] = state;
         // const dir = `./wa-bots/states`;
         // if (!await existsSync(dir)){
         //   await mkdirSync(dir, { recursive: true });
         // }
         // await writeFileSync(`${dir}/state-${this.credId}.txt`, state.toString());
-        this.triggerEvent('state', state);
+        this.triggerEvent(`state.${this.getCredId()}`, state);
       }
     }
 
     async getState (): Promise<ConnectionState> {
-      return Promise.resolve(this.state);
+      return Promise.resolve(this.states[this.getCredId()] ? this.states[this.getCredId()] : ConnectionState.idle);
       // const state: string = await readFileSync(`./wa-bots/states/state-${this.credId}.txt`, 'utf-8');
       // return Promise.resolve(parseInt(state));
     }
@@ -145,6 +153,7 @@ export default class WhatsApp extends EventEmitter {
             // console.log('credId', this.credId)
             // console.log('wa-update', update)
             if (update.connection === 'open') {
+              console.log('update.connection', update.connection)
               this.setState(ConnectionState.connected)
             } else if (update.connection === 'close') {
               // console.log('update.connection', update.connection)
@@ -166,7 +175,7 @@ export default class WhatsApp extends EventEmitter {
             if (update.qr) {
               // console.log('get qr', update.qr)
               this.setState(ConnectionState.disconnected)
-              this.triggerEvent('qr', {
+              this.triggerEvent(`qr.${this.getCredId()}`, {
                 // path: qrFilePath,
                 qr: update.qr
               })
@@ -203,7 +212,7 @@ export default class WhatsApp extends EventEmitter {
 
             setTimeout(async () => {
               // console.log('state', await this.getState());
-              this.triggerEvent('state', await this.getState());
+              this.triggerEvent(`state.${this.getCredId()}`, await this.getState());
             }, 3000);
       
             // sock.ev.on('connection.update', (update) => {
@@ -299,7 +308,7 @@ export default class WhatsApp extends EventEmitter {
       return new Promise(async (resolve, reject) => {
         // (async () => {
           // console.log('downloadTempRemoteFile')
-          const destinationFile = `tmp/${this.getCredId()}/` + saveAs;
+          const destinationFile = 'tmp/' + saveAs;
           if (await existsSync(destinationFile)){
             // console.log('destinationFile')
             return resolve(destinationFile);
@@ -326,7 +335,6 @@ export default class WhatsApp extends EventEmitter {
               createWriteStream(destinationFile)
               .on('finish', function () {
                 setTimeout(() => {
-                  // create cron job to delete tmp file periodically
                   resolve(destinationFile)
                 }, 500);
               }).on('error', e => reject(e))

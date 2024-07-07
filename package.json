@@ -4,8 +4,7 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "start:dev": "npx nodemon",
-    "start:build": "tsc",
+    "dev": "npx nodemon",
     "build": "rm -rf dist && tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

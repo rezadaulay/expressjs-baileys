@@ -4,13 +4,14 @@ import WaService from './services/whatsapp';
 import cors from "cors";
 import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import QRCode from 'qrcode';
-import { body, validationResult } from "express-validator";
+import { body, query, validationResult } from "express-validator";
 import * as winston from "winston";  
 import dotenv from "dotenv";
 
-import Bull , { Job } from 'bull';
+// import Bull , { Job } from 'bull';
 import parsePhoneNumber, { PhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { Attachment } from './services/whatsapp/type';
+import { timeout } from './utils';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -26,69 +27,62 @@ const logger = winston.createLogger({
     ],
 });
 
-const credId = 'bot-1';
-let bot1WaServiceClass:WaService;
-const initWaServer = async (): Promise<WaService> => {
-    // console.log('connecting')
+// interface waServiceClassObject {
+//     [key: string]: WaService;
+// }
+
+interface waServiceClassMap<T extends WaService> {
+    [key: string]: T;
+}
+
+
+// let waServiceClass: [waServiceClassObject];
+let waServiceClass: waServiceClassMap<WaService> | undefined = {};
+const credBaseDir = 'wa-auth-creds';
+const qrCodeBasedir = './wa-bots/qr-codes';
+
+// const initWaServer = async (): Promise<WaService> => {
+//     // console.log('connecting')
+//     return new Promise(async (resolve) => {
+//         // (async () => {
+//             try {
+//                 waServiceClass = new WaService(credId, './wa-auth-info');
+//                 await waServiceClass.connect();
+//                 waServiceClass.on('service.whatsapp.qr', async (value) => {
+//                     const dir = `./wa-bots/qr-codes`;
+//                     if (!await existsSync(dir)){
+//                         await mkdirSync(dir, { recursive: true });
+//                     }
+//                     await writeFileSync(`${dir}/qr-code-${credId}.txt`, value.qr.toString())
+//                 })
+//                 // console.log('resolve')
+//                 resolve(waServiceClass);
+//             } catch (error) {
+//                 logger.error(`Error initWaServer`, { error });
+//                 // logger.info(e);
+//             }
+//         // })()
+//     });
+// }
+
+const initWaServer = (stateId: string): Promise<void> => {
     return new Promise(async (resolve) => {
-        // (async () => {
-            try {
-                bot1WaServiceClass = new WaService(credId, './wa-auth-info');
-                await bot1WaServiceClass.connect();
-                bot1WaServiceClass.on('service.whatsapp.qr', async (value) => {
-                    const dir = `./wa-bots/qr-codes`;
-                    if (!await existsSync(dir)){
-                        await mkdirSync(dir, { recursive: true });
-                    }
-                    await writeFileSync(`${dir}/qr-code-${credId}.txt`, value.qr.toString())
-                })
-                // console.log('resolve')
-                resolve(bot1WaServiceClass);
-            } catch (error) {
-                logger.error(`Error initWaServer`, { error });
-                // logger.info(e);
+        // console.log('waServiceClass.connect()')
+        // create connection wa service
+        await waServiceClass[stateId].connect();
+        waServiceClass[stateId].on(`service.whatsapp.qr`, async (value) => {
+            if (!await existsSync(qrCodeBasedir)){
+                await mkdirSync(qrCodeBasedir, { recursive: true });
             }
-        // })()
-    });
+            await writeFileSync(`${qrCodeBasedir}/qr-code-${waServiceClass[stateId].getCredId()}.txt`, value.qr.toString())
+        });
+        // add delay to make sure all connected
+        await timeout(6000);
+        resolve();
+    })
 }
 
 const runExpressServer = async () => {
-    // const waMessageQueue = new Bull('wa-message', {
-    //     defaultJobOptions: {
-    //         attempts: 3
-    //     },
-    //     redis: {
-    //         host: process.env.REDIS_HOST,
-    //         port: parseInt(process.env.REDIS_PORT ? process.env.REDIS_PORT : '6379'),
-    //         password: process.env.REDIS_PASSWORD
-    //     },
-    //     // Limit queue to max 1 jobs per 7 seconds.
-    //     limiter: {
-    //         max: 1,
-    //         duration: process.env.QUEUE_LIMIT_DURATION ? parseInt(process.env.QUEUE_LIMIT_DURATION) : 7000
-    //     }
-    // });
-    // const processWaQueue = async (job: Job) => {
-    //     const { to, message } = job.data;
-    //     // logger.info('try to process', to, message)
-    //     // throw new Error('tes error');
-    //     logger.info('processing', to, message)
-    //     try {
-    //         await bot1WaServiceClass.sendTextMessage(to, message);
-    //         logger.info('send to', to, message)
-    //     } catch (e) {
-    //         logger.error('error send message', e)
-    //         throw e;
-    //         // if (e === 'waiting for connection') {
-    //         //     return res.send('please wait a second')
-    //         // } if (e === 'no active connection found') {
-    //         //     return res.send('please scan barcode')
-    //         //     // return res.redirect('/scan-barcode')
-    //         // }
-    //     }
-    // }
-    // waMessageQueue.process(processWaQueue);
-
     app.use(express.json());
     app.use(cors());
 
@@ -96,56 +90,96 @@ const runExpressServer = async () => {
         logger.info(`Whatsapp api app listening on port ${process.env.PORT}`)
     });
 
-    // app.get('/', (req, res) => {
-    //     res.send('Let me go home!')
-    // })
-
-    app.get('/logout', async (req, res) => {
-        try {
-            await bot1WaServiceClass.checkConnection()
-            bot1WaServiceClass.disconnect();
-        } catch (error) {
-            logger.error('error', error)
+    app.use(async (req, res, next) => {
+        if (req.query?.cred_id) {
+            const stateId = req.query.cred_id.toString();
+            console.log(`waServiceClass[${stateId}]`, waServiceClass[stateId])
+            if (!waServiceClass[stateId]) {
+                // init wa service
+                waServiceClass[stateId] = new WaService(stateId)
+                waServiceClass[stateId].setCredBaseDir(credBaseDir);
+                try {
+                    await waServiceClass[stateId].checkConnection();
+                } catch (e) {
+                    if (typeof e === 'string' && e === 'waiting for connection') {
+                        await initWaServer(stateId);
+                    }
+                }
+            }
+        } else {
+            return res.status(400).json('cred_id is required')
         }
-        res.send('Success logout')
+        next()
+    })
+      
+
+    app.get('/', (req, res) => {
+        res.send('🇵🇸 Free Palestine!')
     })
 
-    app.get('/restart', async (req, res) => {
+    app.get('/logout', async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
         try {
-            // await bot1WaServiceClass.checkConnection();
-            bot1WaServiceClass.disconnect(true);
+            await waServiceClass[stateId].checkConnection()
+            waServiceClass[stateId].disconnect();
         } catch (error) {
             logger.error('error', error)
         }
-        setTimeout(async () => {
-            try {
-                await bot1WaServiceClass.forceReset(credId);
-                // const dir = `./wa-bots/qr-codes`;
-                // if (await existsSync(dir)){
-                //     await rmSync(dir, { recursive: true, force: true });
-                // }
-            } catch (error) {
-                logger.error('error', error)
-            }
-            setTimeout(async () => {
-                await initWaServer();
-                res.send('Success restart, please wait about 5 seconds to relogin')
-            }, 5000);
-        }, 2500);
+        await timeout(3000);
+        res.json('success logout')
+    });
+
+    app.get('/restart', async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
+        try {
+            // await waServiceClass.checkConnection();
+            waServiceClass[stateId].disconnect(true);
+        } catch (error) {
+            logger.error('error', error)
+        }
+        // you must add delay to make sure everything done
+        await timeout(3000);
+        
+        try {
+            await waServiceClass[stateId].forceReset();
+            // const dir = `./wa-bots/qr-codes`;
+            // if (await existsSync(dir)){
+            //     await rmSync(dir, { recursive: true, force: true });
+            // }
+        } catch (error) {
+            logger.error('error', error)
+        }
+        await initWaServer(stateId);
+        res.json('success restart')
     })
 
     app.get('/get-qrcode', async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
         try {
-            await bot1WaServiceClass.checkConnection();
-            res.send('already connected');
+            await waServiceClass[stateId].checkConnection();
+            res.json('connected');
             return ;
         } catch (e) {
         }
 
-        const dir = `./wa-bots/qr-codes`;
         let qrCodeString: string = '';
         try {
-            qrCodeString = await readFileSync(`${dir}/qr-code-${credId}.txt`, 'utf-8');
+            qrCodeString = await readFileSync(`${qrCodeBasedir}/qr-code-${waServiceClass[stateId].getCredId()}.txt`, 'utf-8');
         } catch (err) {
             console.error(err)
             res.send('qr code not available');
@@ -165,34 +199,40 @@ const runExpressServer = async () => {
         }
     })
 
-    app.get('/keep-alive', async (req, res) => {
-        try {
-            if (process.env.KEEP_ALIVE_NUMBER) {
-                // await bot1WaServiceClass.checkConnection()
-                // waMessageQueue.add({
-                //     to: process.env.KEEP_ALIVE_NUMBER ? process.env.KEEP_ALIVE_NUMBER : '',
-                //     message:
-                //     '*REPORT '+ credId +'*\n\nStatus: *Active*\nLast Update: *' + new Date().toLocaleString() + '*\nStamp: *' + ( (Math.random() + 1).toString(36).substring(7) ) + '*\n\n\n\nTerima Kasih Telah menggunakan layanan kami\n\n*Masbroweb.com*'
-                // });
-                await bot1WaServiceClass.sendTextMessage(
-                    process.env.KEEP_ALIVE_NUMBER ? process.env.KEEP_ALIVE_NUMBER : '',
-                    '*REPORT '+ credId +'*\n\nStatus: *Active*\nLast Update: *' + new Date().toLocaleString() + '*\nStamp: *' + ( (Math.random() + 1).toString(36).substring(7) ) + '*\n\n\n\nTerima Kasih Telah menggunakan layanan kami\n\n*Masbroweb.com*'
-                );
-            }
-            res.send('success send message queue')
-        } catch (e) {
-            console.error('error send message', e)
-            res.send('failed send message')
-        }
-    })
+    // app.get('/keep-alive', async (req, res) => {
+    //     try {
+    //         if (process.env.KEEP_ALIVE_NUMBER) {
+    //             // await waServiceClass.checkConnection()
+    //             // waMessageQueue.add({
+    //             //     to: process.env.KEEP_ALIVE_NUMBER ? process.env.KEEP_ALIVE_NUMBER : '',
+    //             //     message:
+    //             //     '*REPORT '+ credId +'*\n\nStatus: *Active*\nLast Update: *' + new Date().toLocaleString() + '*\nStamp: *' + ( (Math.random() + 1).toString(36).substring(7) ) + '*\n\n\n\nTerima Kasih Telah menggunakan layanan kami\n\n*Masbroweb.com*'
+    //             // });
+    //             await waServiceClass.sendTextMessage(
+    //                 process.env.KEEP_ALIVE_NUMBER ? process.env.KEEP_ALIVE_NUMBER : '',
+    //                 '*REPORT '+ credId +'*\n\nStatus: *Active*\nLast Update: *' + new Date().toLocaleString() + '*\nStamp: *' + ( (Math.random() + 1).toString(36).substring(7) ) + '*\n\n\n\nTerima Kasih Telah menggunakan layanan kami\n\n*Masbroweb.com*'
+    //             );
+    //         }
+    //         res.send('success send message queue')
+    //     } catch (e) {
+    //         console.error('error send message', e)
+    //         res.send('failed send message')
+    //     }
+    // })
 
     app.get('/get-state', async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
         try {
-            await bot1WaServiceClass.checkConnection();
-            res.send('connected');
+            await waServiceClass[stateId].checkConnection();
+            res.json('connected');
         } catch (e) {
-            // console.error('error send message', e)
-            res.send('failed check connection')
+            console.error('error get state', e)
+            return res.status(400).json(typeof e === 'string' ? e : 'failed check connection')
         }
     })
 
@@ -200,6 +240,12 @@ const runExpressServer = async () => {
       body('phone_number').notEmpty().escape(),
       body('message').notEmpty().escape(),
       async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -220,29 +266,29 @@ const runExpressServer = async () => {
         }
 
         try {
-            await bot1WaServiceClass.checkConnection();
+            await waServiceClass[stateId].checkConnection();
             // setTimeout(() => {
             let message = req.body.message.replaceAll('&amp;#x2F;', "/");
             message = message.replaceAll('&#x2F;', "/");
-            bot1WaServiceClass.sendTextMessage(req.body.phone_number, message)
+            waServiceClass[stateId].sendTextMessage(req.body.phone_number, message)
             // , 7000});
             // waMessageQueue.add({
             //     to: req.body.phone_number,
             //     message: req.body.message
             // });
-            res.send('success send message queue')
+            res.json('success')
         } catch (e) {
             logger.error('error send message', e)
             if (e === 'waiting for connection') {
-                return res.send('please wait a second')
+                return res.status(400).json('please wait a second')
             } else if (e === 'no active connection found') {
-                return res.send('please scan barcode')
+                return res.status(400).json('please scan barcode')
                 // return res.redirect('/scan-barcode')
             } else if (e === 'number not exists') {
-                return res.send('number not exists')
+                return res.status(400).json('number not exists')
                 // return res.redirect('/scan-barcode')
             }
-            res.send('failed send message')
+            res.status(500).json('failed send message')
         }
     });
 
@@ -252,6 +298,12 @@ const runExpressServer = async () => {
       body('media').notEmpty(),
       body('media_filename').notEmpty(),
       async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -272,7 +324,7 @@ const runExpressServer = async () => {
         }
 
         try {
-            await bot1WaServiceClass.checkConnection();
+            await waServiceClass[stateId].checkConnection();
             // setTimeout(() => {
             let message = '';
             if (req.body.message) {
@@ -284,30 +336,24 @@ const runExpressServer = async () => {
                 filesize: 0,
                 type: 'photo'
             }
-            bot1WaServiceClass.sendMediaMessage(req.body.phone_number, media, message)
-            res.send('success send message queue')
+            waServiceClass[stateId].sendMediaMessage(req.body.phone_number, media, message)
+            res.json('success')
         } catch (e) {
             logger.error('error send message', e)
             if (e === 'waiting for connection') {
-                return res.send('please wait a second')
+                return res.status(400).json('please wait a second')
             } else if (e === 'no active connection found') {
-                return res.send('please scan barcode')
+                return res.status(400).json('please scan barcode')
                 // return res.redirect('/scan-barcode')
             } else if (e === 'number not exists') {
-                return res.send('number not exists')
+                return res.status(400).json('number not exists')
                 // return res.redirect('/scan-barcode')
             }
-            res.send('failed send message')
+            res.status(500).json('failed send message')
         }
     });
     // return app;
 }
-
-const initWebServer = async () => {
-    await initWaServer();
-    runExpressServer()
-}
-
-initWebServer();
+runExpressServer();
 // console.log('connected')
 // export default app;
