@@ -1,8 +1,18 @@
 {
-  "name": "wa-api-masbro",
-  "version": "0.0.1",
+  "name": "expressjs-baileys",
+  "version": "1.0.0",
   "description": "",
-  "main": "index.ts",
+  "keywords": [
+    "whatsapp",
+    "js-whatsapp",
+    "whatsapp-api",
+    "whatsapp-web",
+    "whatsapp-chat",
+    "whatsapp-group",
+    "automation",
+    "multi-device"
+  ],
+  "main": "src/index.ts",
   "scripts": {
     "dev": "npx nodemon",
     "build": "rm -rf dist && tsc",
@@ -35,9 +45,10 @@
     "sharp": "^0.32.6",
     "winston": "^3.13.0"
   },
+  "homepage": "https://masbroweb.com",
   "author": {
-    "name": "Masbroweb.com",
-    "email": "masbro.developer@gmail.com"
+    "name": "Daulay Reza",
+    "email": "daulayreza@gmail.com"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }
