@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 // import Bull , { Job } from 'bull';
 import parsePhoneNumber, { PhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { Attachment } from './services/whatsapp/type';
-import { timeout } from './utils';
+import { replaceHtmlEntities, timeout } from './utils';
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -58,7 +58,7 @@ const qrCodeBasedir = './wa-bots/qr-codes';
 //                 // console.log('resolve')
 //                 resolve(waServiceClass);
 //             } catch (error) {
-//                 logger.error(`Error initWaServer`, { error });
+//                 logger.info(`Error initWaServer`, { error });
 //                 // logger.info(e);
 //             }
 //         // })()
@@ -93,7 +93,7 @@ const runExpressServer = async () => {
     app.use(async (req, res, next) => {
         if (req.query?.cred_id) {
             const stateId = req.query.cred_id.toString();
-            console.log(`waServiceClass[${stateId}]`, waServiceClass[stateId])
+            // console.log(`waServiceClass[${stateId}]`, waServiceClass[stateId])
             if (!waServiceClass[stateId]) {
                 // init wa service
                 waServiceClass[stateId] = new WaService(stateId)
@@ -128,7 +128,7 @@ const runExpressServer = async () => {
             await waServiceClass[stateId].checkConnection()
             waServiceClass[stateId].disconnect();
         } catch (error) {
-            logger.error('error', error)
+            logger.info(error)
         }
         await timeout(3000);
         res.json('success logout')
@@ -145,7 +145,7 @@ const runExpressServer = async () => {
             // await waServiceClass.checkConnection();
             waServiceClass[stateId].disconnect(true);
         } catch (error) {
-            logger.error('error', error)
+            logger.info(error)
         }
         // you must add delay to make sure everything done
         await timeout(3000);
@@ -157,7 +157,7 @@ const runExpressServer = async () => {
             //     await rmSync(dir, { recursive: true, force: true });
             // }
         } catch (error) {
-            logger.error('error', error)
+            logger.info(error)
         }
         await initWaServer(stateId);
         res.json('success restart')
@@ -268,9 +268,10 @@ const runExpressServer = async () => {
         try {
             await waServiceClass[stateId].checkConnection();
             // setTimeout(() => {
-            let message = req.body.message.replaceAll('&amp;#x2F;', "/");
-            message = message.replaceAll('&#x2F;', "/");
-            waServiceClass[stateId].sendTextMessage(req.body.phone_number, message)
+            // let message = req.body.message.replaceAll('&amp;#x2F;', "/");
+            // message = message.replaceAll('&#x2F;', "/");
+            // console.log('req.body.message', req.body.message)
+            waServiceClass[stateId].sendTextMessage(req.body.phone_number, replaceHtmlEntities(req.body.message))
             // , 7000});
             // waMessageQueue.add({
             //     to: req.body.phone_number,
@@ -278,7 +279,7 @@ const runExpressServer = async () => {
             // });
             res.json('success')
         } catch (e) {
-            logger.error('error send message', e)
+            logger.info(e)
             if (e === 'waiting for connection') {
                 return res.status(400).json('please wait a second')
             } else if (e === 'no active connection found') {
@@ -327,8 +328,9 @@ const runExpressServer = async () => {
             await waServiceClass[stateId].checkConnection();
             // setTimeout(() => {
             let message = '';
+            // console.log('req.body.message', req.body.message)
             if (req.body.message) {
-                message = req.body.message.replaceAll('&amp;#x2F;', "/").replaceAll('&#x2F;', "/");
+                message = replaceHtmlEntities(req.body.message)
             }
             const media: Attachment = {
                 url: req.body.media,
@@ -339,7 +341,7 @@ const runExpressServer = async () => {
             waServiceClass[stateId].sendMediaMessage(req.body.phone_number, media, message)
             res.json('success')
         } catch (e) {
-            logger.error('error send message', e)
+            logger.info(e)
             if (e === 'waiting for connection') {
                 return res.status(400).json('please wait a second')
             } else if (e === 'no active connection found') {
