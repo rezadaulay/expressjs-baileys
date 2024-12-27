@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import WaService from './services/whatsapp';
+import { deleteOldTempRemoteFile } from './utils';
 import cors from "cors";
 import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import QRCode from 'qrcode';
@@ -87,7 +88,7 @@ const runExpressServer = async () => {
     app.use(cors());
 
     app.listen(PORT, () => {
-        logger.info(`Whatsapp api app listening on port ${process.env.PORT}`)
+        logger.info(`Whatsapp api app listening on port ${PORT}`)
     });
 
     app.use(async (req, res, next) => {
@@ -117,6 +118,16 @@ const runExpressServer = async () => {
         res.send('🇵🇸 Free Palestine!')
     })
 
+    app.get('/delete-temp-files', (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+        deleteOldTempRemoteFile(stateId);
+        res.json('delete on progress')
+    })
+
     app.get('/logout', async (req, res) => {
         // @ts-ignore
         const stateId = req.query.cred_id.toString();
@@ -131,6 +142,7 @@ const runExpressServer = async () => {
             logger.info(error)
         }
         await timeout(3000);
+        deleteOldTempRemoteFile(stateId);
         res.json('success logout')
     });
 

@@ -6,6 +6,7 @@ import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { EventEmitter } from 'events';
 import axios from 'axios';
+import { downloadTempRemoteFile } from './../../utils';
 // const { exec } = require("child_process");
 // const pathToFfmpeg = require('ffmpeg-static');
 
@@ -294,47 +295,47 @@ export default class WhatsApp extends EventEmitter {
       })
     }
 
-    downloadTempRemoteFile (url: string, saveAs: string): Promise<string> {
-      // console.log('downloadTempRemoteFile')
-      return new Promise(async (resolve, reject) => {
-        // (async () => {
-          // console.log('downloadTempRemoteFile')
-          const destinationFile = `tmp/${this.getCredId()}/` + saveAs;
-          if (await existsSync(destinationFile)){
-            // console.log('destinationFile')
-            return resolve(destinationFile);
-          }
-          // make directory
-          const dir = dirname(destinationFile);
-          if (!await existsSync(dir)){
-            await mkdirSync(dir, {
-              recursive: true
-            });
-            // console.log('mkdirSync')
-          }
-          try {
-          } catch (e) {
-            return reject(e);
-          }
-          // save file
-          axios({
-            method: 'get',
-            url: url,
-            responseType: 'stream'
-          }).then(function (response) {
-            response.data.pipe(
-              createWriteStream(destinationFile)
-              .on('finish', function () {
-                setTimeout(() => {
-                  // create cron job to delete tmp file periodically
-                  resolve(destinationFile)
-                }, 500);
-              }).on('error', e => reject(e))
-            )
-          }).catch(e => reject(e));
-        // })
-      });
-    }
+    // downloadTempRemoteFile (url: string, saveAs: string): Promise<string> {
+    //   // console.log('downloadTempRemoteFile')
+    //   return new Promise(async (resolve, reject) => {
+    //     // (async () => {
+    //       // console.log('downloadTempRemoteFile')
+    //       const destinationFile = `tmp/${this.getCredId()}/` + saveAs;
+    //       if (await existsSync(destinationFile)){
+    //         // console.log('destinationFile')
+    //         return resolve(destinationFile);
+    //       }
+    //       // make directory
+    //       const dir = dirname(destinationFile);
+    //       if (!await existsSync(dir)){
+    //         await mkdirSync(dir, {
+    //           recursive: true
+    //         });
+    //         // console.log('mkdirSync')
+    //       }
+    //       try {
+    //       } catch (e) {
+    //         return reject(e);
+    //       }
+    //       // save file
+    //       axios({
+    //         method: 'get',
+    //         url: url,
+    //         responseType: 'stream'
+    //       }).then(function (response) {
+    //         response.data.pipe(
+    //           createWriteStream(destinationFile)
+    //           .on('finish', function () {
+    //             setTimeout(() => {
+    //               // create cron job to delete tmp file periodically
+    //               resolve(destinationFile)
+    //             }, 500);
+    //           }).on('error', e => reject(e))
+    //         )
+    //       }).catch(e => reject(e));
+    //     // })
+    //   });
+    // }
 
     async sendMediaMessage (destinationNumber: string, file: Attachment, messageContent: string): Promise<string> {
       return new Promise(async (resolve, reject) => {
@@ -363,7 +364,7 @@ export default class WhatsApp extends EventEmitter {
               return reject('number not exists')
             }
 
-            const savedFile = await this.downloadTempRemoteFile(file.url, file.name);
+            const savedFile = await downloadTempRemoteFile(this.getCredId(), file.url, file.name);
             // console.log('savedFile', savedFile)
 
             if (file.type === 'photo') {

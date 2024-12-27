@@ -50,6 +50,10 @@ npm run build
         "message": "non mandatory"
     }
     ```
+## Additional
+To remove old temporary files, set up a cron job to periodically call the endpoint below:
+
+`/delete-temp-files?cred_id=xxx`
 
 ## License
 
