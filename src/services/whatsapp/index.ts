@@ -1,8 +1,9 @@
-import makeWASocket, { useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
 // import QRCode from 'qrcode';
 import { /* writeFileSync, */ unlinkSync, readFileSync, mkdirSync, existsSync, rmSync, writeFileSync, createWriteStream } from 'fs';
 import { Attachment, ConnectionState, PreparedPhotoFile, PreparedVideoFile, PreparedDocumentFile } from './type';
 import { dirname, join } from 'path'
+import { Boom } from '@hapi/boom'
 import { tmpdir } from 'os'
 import { EventEmitter } from 'events';
 import axios from 'axios';
@@ -148,8 +149,17 @@ export default class WhatsApp extends EventEmitter {
             if (update.connection === 'open') {
               this.setState(ConnectionState.connected)
             } else if (update.connection === 'close') {
+              const shouldReconnect = (update.lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+              console.log('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
+            // reconnect if not logged out
+              if(shouldReconnect) {
+                this.setState(ConnectionState.disconnected)
+              } else {
+                this.setState(ConnectionState.connected)
+              }
+
               // console.log('update.connection', update.connection)
-              this.setState(ConnectionState.disconnected)
+              // this.setState(ConnectionState.disconnected)
             }
             // else {
             //   this.setState(credId, ConnectionState.disconnected)

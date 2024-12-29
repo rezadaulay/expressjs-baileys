@@ -32,6 +32,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
     "@netlify/functions": "^2.7.0",
     "@whiskeysockets/baileys": "^6.6.0",
     "axios": "^1.7.2",
