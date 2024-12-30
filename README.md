@@ -1,8 +1,8 @@
-# Expressjs-Baileys
+# Expressjs-Baileys-Whatsapp-Api-Unofficial
 
 ## Description
 
-Expressjs-Baileys is an implementation of [Baileys](https://github.com/WhiskeySockets/Baileys) using express.js, allowing Baileys to be used as a REST API. This project includes the main feature of supporting multiple accounts, enabling users to log in with more than one WhatsApp account.
+Expressjs-Baileys is an implementation of [Baileys](https://github.com/WhiskeySockets/Baileys) using express.js, allowing Baileys to be used as a REST API. By using Baileys, you can set up your own WhatsApp API server.  This project includes the main feature of supporting multiple accounts, enabling users to log in with more than one WhatsApp account.
 
 ## Features
 
