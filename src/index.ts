@@ -6,7 +6,8 @@ import cors from "cors";
 import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import QRCode from 'qrcode';
 import { body, query, validationResult } from "express-validator";
-import * as winston from "winston";  
+import { createLogger, format, transports } from 'winston';
+
 import dotenv from "dotenv";
 
 // import Bull , { Job } from 'bull';
@@ -18,15 +19,22 @@ dotenv.config();
 const PORT = process.env.PORT || 5000;
 const app = express()
 
+const { combine, timestamp, prettyPrint, colorize, errors,  } = format; 
 // Create a logger instance
-const logger = winston.createLogger({
-    level: 'info', // Set the log level
-    format: winston.format.json(), // Specify the log format
+const logger = createLogger({
+    // level: 'info', // Set the log level
+    // format: winston.format.json(), // Specify the log format
+    format: combine(
+      errors({ stack: true }), // <-- use errors format
+      colorize(),
+      timestamp(),
+      prettyPrint()
+    ),
     transports: [
-      new winston.transports.Console(), // Log to console
-      new winston.transports.File({ filename: 'application.log' }), // Log to a file
+      new transports.Console(), // Log to console
+      new transports.File({ filename: 'application.log' }), // Log to a file
     ],
-});
+})
 
 // interface waServiceClassObject {
 //     [key: string]: WaService;
