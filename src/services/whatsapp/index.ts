@@ -153,9 +153,9 @@ export default class WhatsApp extends EventEmitter {
               console.log('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
             // reconnect if not logged out
               if(shouldReconnect) {
-                this.setState(ConnectionState.disconnected)
-              } else {
                 this.setState(ConnectionState.connected)
+              } else {
+                this.setState(ConnectionState.disconnected)
               }
 
               // console.log('update.connection', update.connection)
