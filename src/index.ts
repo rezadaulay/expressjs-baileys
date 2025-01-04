@@ -291,7 +291,7 @@ const runExpressServer = async () => {
             // let message = req.body.message.replaceAll('&amp;#x2F;', "/");
             // message = message.replaceAll('&#x2F;', "/");
             // console.log('req.body.message', req.body.message)
-            waServiceClass[stateId].sendTextMessage(req.body.phone_number, replaceHtmlEntities(req.body.message))
+            await waServiceClass[stateId].sendTextMessage(req.body.phone_number, replaceHtmlEntities(req.body.message))
             // , 7000});
             // waMessageQueue.add({
             //     to: req.body.phone_number,
