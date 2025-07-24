@@ -65,6 +65,13 @@ export default class WhatsApp extends EventEmitter {
     //   })
     // }
 
+    restartWebSocket (): void {
+      const conn = this.findConnection()
+      if (conn) {
+        conn.end(new Error("restart"))
+      }
+    }
+
     async removeConnection (force = false): Promise<void> {
       if (this.connections[this.credId]) {
         if (force) {
@@ -152,8 +159,13 @@ export default class WhatsApp extends EventEmitter {
               const shouldReconnect = (update.lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
               console.log('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
             // reconnect if not logged out
+              // if(shouldReconnect) {
+              //   this.setState(ConnectionState.connected)
+              // } else {
+              //   this.setState(ConnectionState.disconnected)
+              // }
               if(shouldReconnect) {
-                this.setState(ConnectionState.connected)
+                this.initializeConnection()
               } else {
                 this.setState(ConnectionState.disconnected)
               }

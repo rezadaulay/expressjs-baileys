@@ -154,6 +154,23 @@ const runExpressServer = async () => {
         res.json('success logout')
     });
 
+    app.get('/restart-web-socket', async (req, res) => {
+        // @ts-ignore
+        const stateId = req.query.cred_id.toString();
+        if (!waServiceClass[stateId]) {
+            return res.status(400).json('connection uninitialized');
+        }
+
+        try {
+            // await waServiceClass.checkConnection();
+            waServiceClass[stateId].restartWebSocket();
+        } catch (error) {
+            logger.info(error)
+        }
+        
+        res.json('success restart web socket')
+    })
+
     app.get('/restart', async (req, res) => {
         // @ts-ignore
         const stateId = req.query.cred_id.toString();
