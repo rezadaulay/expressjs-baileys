@@ -12,7 +12,7 @@ import dotenv from "dotenv";
 
 // import Bull , { Job } from 'bull';
 import parsePhoneNumber, { PhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
-import { Attachment } from './services/whatsapp/type';
+import { Attachment, ConnectionState } from './services/whatsapp/type';
 import { replaceHtmlEntities, timeout } from './utils';
 
 dotenv.config();
@@ -302,6 +302,12 @@ const runExpressServer = async () => {
             ] });
         }
 
+        if (await waServiceClass[stateId].getState() === ConnectionState.idle) {
+            await waServiceClass[stateId].initializeConnection()
+            await timeout(5000);
+        }
+        // logger.info('connection: ' + (await waServiceClass[stateId].getState()))
+
         try {
             await waServiceClass[stateId].checkConnection();
             // setTimeout(() => {
@@ -325,6 +331,12 @@ const runExpressServer = async () => {
             } else if (e === 'number not exists') {
                 return res.status(400).json('number not exists')
                 // return res.redirect('/scan-barcode')
+            }
+            // @ts-ignore
+            if (e && e.message && e.message === 'Connection Closed') {
+                logger.info('masuk kondisi Connection Closed')
+                await waServiceClass[stateId].initializeConnection()
+                // await initWaServer(stateId);
             }
             res.status(500).json('failed send message')
         }

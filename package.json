@@ -16,7 +16,7 @@
   ],
   "main": "src/index.ts",
   "scripts": {
-    "dev": "npx nodemon",
+    "dev": "npx nodemon -x",
     "build": "rm -rf dist && ./node_modules/@vercel/ncc/dist/ncc/cli.js build -m -d",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -35,7 +35,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@netlify/functions": "^2.7.0",
-    "@whiskeysockets/baileys": "^6.6.0",
+    "@whiskeysockets/baileys": "^6.7.18",
     "axios": "^1.7.2",
     "bull": "^4.12.2",
     "cors": "^2.8.5",
@@ -44,6 +44,7 @@
     "express-validator": "^7.0.1",
     "libphonenumber-js": "^1.10.58",
     "link-preview-js": "^3.0.5",
+    "pm2": "^6.0.8",
     "qrcode": "^1.5.3",
     "serverless-http": "^3.2.0",
     "sharp": "^0.32.6",

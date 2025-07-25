@@ -1,4 +1,4 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
 // import QRCode from 'qrcode';
 import { /* writeFileSync, */ unlinkSync, readFileSync, mkdirSync, existsSync, rmSync, writeFileSync, createWriteStream } from 'fs';
 import { Attachment, ConnectionState, PreparedPhotoFile, PreparedVideoFile, PreparedDocumentFile } from './type';
@@ -8,8 +8,26 @@ import { tmpdir } from 'os'
 import { EventEmitter } from 'events';
 import axios from 'axios';
 import { downloadTempRemoteFile } from './../../utils';
+import { createLogger, format, transports } from 'winston';
 // const { exec } = require("child_process");
 // const pathToFfmpeg = require('ffmpeg-static');
+
+const { combine, timestamp, prettyPrint, colorize, errors,  } = format; 
+// Create a logger instance
+const logger = createLogger({
+    // level: 'info', // Set the log level
+    // format: winston.format.json(), // Specify the log format
+    format: combine(
+      errors({ stack: true }), // <-- use errors format
+      colorize(),
+      timestamp(),
+      prettyPrint()
+    ),
+    transports: [
+      new transports.Console(), // Log to console
+      new transports.File({ filename: 'application.log' }), // Log to a file
+    ],
+})
 
 interface ConnectionObject {
   [key: string]: WASocket;
@@ -68,6 +86,7 @@ export default class WhatsApp extends EventEmitter {
     restartWebSocket (): void {
       const conn = this.findConnection()
       if (conn) {
+        this.setState(ConnectionState.idle)
         conn.end(new Error("restart"))
       }
     }
@@ -132,11 +151,13 @@ export default class WhatsApp extends EventEmitter {
       }
       const { state, saveCreds } = await useMultiFileAuthState(`${dir}/` + this.credId)
       const sock = makeWASocket({
-        syncFullHistory: false,
+        syncFullHistory: true,
+        browser: Browsers.windows('Desktop'),
         // markOnlineOnConnect: false,
         printQRInTerminal: false,
         auth: state,
-        generateHighQualityLinkPreview: true
+        generateHighQualityLinkPreview: true,
+        retryRequestDelayMs: 3000
       });
       this.generateQR(sock)
 
@@ -151,28 +172,38 @@ export default class WhatsApp extends EventEmitter {
     async generateQR (sock: WASocket): Promise<string> {
         return new Promise((resolve, reject) => {
           sock.ev.on('connection.update', async (update) => {
+            if (update.connection === 'close' && (update.lastDisconnect?.error as Boom)?.output?.statusCode === DisconnectReason.restartRequired) {
+              // create a new socket, this socket is now useless
+              await this.initializeConnection()
+            } else if (update.connection === 'open') {
+              this.setState(ConnectionState.connected)
+            }
             // console.log('credId', this.credId)
             // console.log('wa-update', update)
-            if (update.connection === 'open') {
-              this.setState(ConnectionState.connected)
-            } else if (update.connection === 'close') {
-              const shouldReconnect = (update.lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-              console.log('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
-            // reconnect if not logged out
-              // if(shouldReconnect) {
-              //   this.setState(ConnectionState.connected)
-              // } else {
-              //   this.setState(ConnectionState.disconnected)
-              // }
-              if(shouldReconnect) {
-                this.initializeConnection()
-              } else {
-                this.setState(ConnectionState.disconnected)
-              }
+            // if (update.connection === 'open') {
+            //   this.setState(ConnectionState.connected)
+            // } else if (update.connection === 'close') {
+            //   const shouldReconnect = (update.lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            //   logger.info('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
+            //   // console.log('connection closed due to ', update.lastDisconnect?.error, ', reconnecting ', shouldReconnect)
+            // // reconnect if not logged out
+            //   // if(shouldReconnect) {
+            //   //   this.setState(ConnectionState.connected)
+            //   // } else {
+            //   //   this.setState(ConnectionState.disconnected)
+            //   // }
+            //   if(shouldReconnect) {
+            //     this.setState(ConnectionState.connected)
+            //     // this.initializeConnection()
+            //   } else {
+            //     // await this.initializeConnection()
+            //     // sock.end(new Error("restart"))
+            //     this.setState(ConnectionState.disconnected)
+            //   }
 
-              // console.log('update.connection', update.connection)
-              // this.setState(ConnectionState.disconnected)
-            }
+            //   // console.log('update.connection', update.connection)
+            //   // this.setState(ConnectionState.disconnected)
+            // }
             // else {
             //   this.setState(credId, ConnectionState.disconnected)
             // }
@@ -181,11 +212,11 @@ export default class WhatsApp extends EventEmitter {
             //   await mkdirSync(dir, { recursive: true });
             // }
             // const qrFilePath = `${dir}/qr-code-${this.credId}.png`;
-            if (update.isNewLogin) {
+            // if (update.isNewLogin) {
               // console.log('isNewLogin')
-              this.initializeConnection()
+              // this.initializeConnection()
               // await unlinkSync(qrFilePath);
-            }
+            // }
             if (update.qr) {
               // console.log('get qr', update.qr)
               this.setState(ConnectionState.disconnected)
@@ -303,10 +334,15 @@ export default class WhatsApp extends EventEmitter {
               return reject('no active connection found')
             }
 
-            const [result] = await conn.onWhatsApp(formattedRecipient);
-            if (!result.exists) {
+            // const [result] = await conn.onWhatsApp(formattedRecipient);
+            // @ts-ignore
+            const [result] = await conn.onWhatsApp(formattedRecipient)
+            if (result.exists) {
+              
+            } else {
               return reject('number not exists')
             }
+
       
             await conn.sendMessage(formattedRecipient, { text: messageContent })
             return resolve(`success send message to ${formattedRecipient} with message ${messageContent}`)
