@@ -264,6 +264,11 @@ const runExpressServer = async () => {
             return res.status(400).json('connection uninitialized');
         }
 
+        if (await waServiceClass[stateId].getState() === ConnectionState.idle) {
+            await waServiceClass[stateId].initializeConnection()
+            await timeout(5000);
+        }
+
         try {
             await waServiceClass[stateId].checkConnection();
             res.json('connected');

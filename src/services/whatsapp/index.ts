@@ -159,6 +159,7 @@ export default class WhatsApp extends EventEmitter {
         generateHighQualityLinkPreview: true,
         retryRequestDelayMs: 3000
       });
+      console.log('run generateQR')
       this.generateQR(sock)
 
       sock.ev.on('creds.update', () => {
@@ -172,6 +173,7 @@ export default class WhatsApp extends EventEmitter {
     async generateQR (sock: WASocket): Promise<string> {
         return new Promise((resolve, reject) => {
           sock.ev.on('connection.update', async (update) => {
+            console.log('update.connection ', update.connection )
             if (update.connection === 'close' && (update.lastDisconnect?.error as Boom)?.output?.statusCode === DisconnectReason.restartRequired) {
               // create a new socket, this socket is now useless
               await this.initializeConnection()
