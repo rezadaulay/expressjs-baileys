@@ -7,6 +7,8 @@ import { Boom } from '@hapi/boom'
 import { tmpdir } from 'os'
 import { EventEmitter } from 'events';
 import axios from 'axios';
+import AuthenticationFromDatabase from '../../authSession/authentication';
+import DatabaseHandler from '../../authSession/databaseMethods';
 import { downloadTempRemoteFile } from './../../utils';
 import { createLogger, format, transports } from 'winston';
 // const { exec } = require("child_process");
@@ -38,6 +40,8 @@ export default class WhatsApp extends EventEmitter {
     private credId: string;
     private credBaseDir: string = '';
     private state: ConnectionState;
+    private database = new DatabaseHandler();
+
     constructor (credId: string) {
       super();
       this.credId = credId;
@@ -50,9 +54,6 @@ export default class WhatsApp extends EventEmitter {
       return this.credId
     }
 
-    setCredBaseDir (credBaseDir: string): void {
-        this.credBaseDir = credBaseDir;
-    }
 
     getConnections (): { [key: string]: WASocket } {
       return this.connections;
@@ -91,35 +92,18 @@ export default class WhatsApp extends EventEmitter {
       }
     }
 
-    async removeConnection (force = false): Promise<void> {
-      if (this.connections[this.credId]) {
-        if (force) {
-          try {
-            this.connections[this.credId].logout()
-            // this.connections[this.credId].ws.close()
-            // this.connections[this.credId].end(new Error('force close'))
-          } catch (e) {}
-        } else {
-          this.connections[this.credId].logout()
-        }
-        delete this.connections[this.credId]
-        const dir = this.credBaseDir + '/' + this.credId;
-        if (await existsSync(dir)){
-          await rmSync(dir, { recursive: true, force: true });
-        }
-      }
+     async removeConnection(): Promise<void> {
+        const { removeSession } = new DatabaseHandler();
+        await removeSession(this.credId);
     }
 
-    forceReset (): Promise<null> {
-      return new Promise(async (resolve) => {
-        // (async () => {
-          const dir = this.credBaseDir + '/' + this.getCredId();
-          if (await existsSync(dir)){
-            await rmSync(dir, { recursive: true, force: true });
-          }
-          return resolve(null)
-        // })()
-      });
+    forceReset(): Promise<null> {
+        return new Promise(async (resolve) => {
+            // (async () => {
+            await this.removeConnection();
+            return resolve(null);
+            // })()
+        });
     }
 
     async setState (state: ConnectionState) {
@@ -144,30 +128,22 @@ export default class WhatsApp extends EventEmitter {
       this.emit(`service.whatsapp.${eventName}`, value);
     }
 
-    async initializeConnection (): Promise<WASocket | null> {
-      const dir = this.credBaseDir;
-      if (!await existsSync(dir)){
-        await mkdirSync(dir, { recursive: true });
-      }
-      const { state, saveCreds } = await useMultiFileAuthState(`${dir}/` + this.credId)
-      const sock = makeWASocket({
-        syncFullHistory: true,
-        browser: Browsers.windows('Desktop'),
-        // markOnlineOnConnect: false,
-        printQRInTerminal: false,
-        auth: state,
-        generateHighQualityLinkPreview: true,
-        retryRequestDelayMs: 3000
-      });
-      console.log('run generateQR')
-      this.generateQR(sock)
+    async initializeConnection(): Promise<WASocket | null> {
+        const database = new DatabaseHandler();
+        const { useDatabaseAuth } = new AuthenticationFromDatabase(this.credId, database);
+        const { state, saveState } = await useDatabaseAuth();
+        const sock = makeWASocket({
+            syncFullHistory: false,
+            printQRInTerminal: true,
+            auth: state,
+            generateHighQualityLinkPreview: true,
+        });
+        this.generateQR(sock);
 
-      sock.ev.on('creds.update', () => {
-        saveCreds()
-      })
+        sock.ev.on('creds.update', saveState);
 
-      this.setConnection(sock)
-      return this.findConnection()
+        this.setConnection(sock);
+        return this.findConnection();
     }
 
     async generateQR (sock: WASocket): Promise<string> {
@@ -245,53 +221,46 @@ export default class WhatsApp extends EventEmitter {
         })
     }
 
-    async connect (): Promise<WASocket | null> {
-      return new Promise(async (resolve, reject) => {
-        // (async () => {
-          try {
-            let sock = this.findConnection();
-            // this.setState(ConnectionState.idle)
-      
-            if (!sock) {
-              // console.log('initializeConnection')
-              sock = await this.initializeConnection()
-            }
+   async connect(): Promise<WASocket | null> {
+        return new Promise(async (resolve, reject) => {
+            // (async () => {
+            try {
+                await this.database.connect();
+                let sock = this.findConnection();
+                // this.setState(ConnectionState.idle)
 
-            setTimeout(async () => {
-              // console.log('state', await this.getState());
-              this.triggerEvent('state', await this.getState());
-            }, 3000);
-      
-            // sock.ev.on('connection.update', (update) => {
-            //   if (update.connection === 'open') {
-            //     // sock.auth
-            //     console.log('sock.auth', sock)
-            //     this.setSessionToDB(credId, sock)
-            //   }
-            // })
-      
-            resolve(sock)
-          } catch (error) {
-            reject(error)
-          }
-        // })()
-      });
+                if (!sock) {
+                    // console.log('initializeConnection')
+                    sock = await this.initializeConnection();
+                }
+
+                setTimeout(async () => {
+                    // console.log('state', await this.getState());
+                    this.triggerEvent('state', await this.getState());
+                }, 3000);
+
+                resolve(sock);
+            } catch (error) {
+                reject(error);
+            }
+            // })()
+        });
     }
     
-    async disconnect (force = false): Promise<null> {
-      // this.setState(ConnectionState.idle)
-      return new Promise((resolve, reject) => {
-        try {
-          this.removeConnection(force)
-          resolve(null);
-          // delete folder wa-bot-info
-        } catch (error) {
-          reject(error)
-        }
-      });
-      // setTimeout(() => {
-      //   this.setState(ConnectionState.disconnected)
-      // }, 1500);
+async disconnect(): Promise<null> {
+        // this.setState(ConnectionState.idle)
+        return new Promise((resolve, reject) => {
+            try {
+                this.removeConnection();
+                resolve(null);
+                // delete folder wa-bot-info
+            } catch (error) {
+                reject(error);
+            }
+        });
+        // setTimeout(() => {
+        //   this.setState(ConnectionState.disconnected)
+        // }, 1500);
     }
 
     async checkConnection (): Promise<ConnectionState> {
