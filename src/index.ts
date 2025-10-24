@@ -99,13 +99,14 @@ const runExpressServer = async () => {
         logger.info(`Whatsapp api app listening on port ${PORT}`)
     });
 
-   app.use(async (req, res, next) => {
+    app.use(async (req, res, next) => {
         if (req.query?.cred_id) {
             const stateId = req.query.cred_id.toString();
             // console.log(`waServiceClass[${stateId}]`, waServiceClass[stateId])
             if (!waServiceClass[stateId]) {
                 // init wa service
-                waServiceClass[stateId] = new WaService(stateId);
+                waServiceClass[stateId] = new WaService(stateId)
+                waServiceClass[stateId].setCredBaseDir(credBaseDir);
                 try {
                     await waServiceClass[stateId].checkConnection();
                 } catch (e) {
@@ -115,10 +116,10 @@ const runExpressServer = async () => {
                 }
             }
         } else {
-            return res.status(400).json('cred_id is required');
+            return res.status(400).json('cred_id is required')
         }
-        next();
-    });
+        next()
+    })
       
 
     app.get('/', (req, res) => {
@@ -179,13 +180,13 @@ const runExpressServer = async () => {
 
         try {
             // await waServiceClass.checkConnection();
-            waServiceClass[stateId].disconnect();
+            waServiceClass[stateId].disconnect(true);
         } catch (error) {
-            logger.info(error);
+            logger.info(error)
         }
         // you must add delay to make sure everything done
         await timeout(3000);
-
+        
         try {
             await waServiceClass[stateId].forceReset();
             // const dir = `./wa-bots/qr-codes`;
@@ -193,11 +194,11 @@ const runExpressServer = async () => {
             //     await rmSync(dir, { recursive: true, force: true });
             // }
         } catch (error) {
-            logger.info(error);
+            logger.info(error)
         }
         await initWaServer(stateId);
-        res.json('success restart');
-    });
+        res.json('success restart')
+    })
 
     app.get('/get-qrcode', async (req, res) => {
         // @ts-ignore
