@@ -1,12 +1,14 @@
 import 'dotenv/config';
 import express from "express";
 import WaService from './services/whatsapp';
+import { AttachmentTypes } from './services/whatsapp/type';
 import { deleteOldTempRemoteFile } from './utils';
 import cors from "cors";
 import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import QRCode from 'qrcode';
 import { body, query, validationResult } from "express-validator";
 import { createLogger, format, transports } from 'winston';
+import * as path from 'path';
 
 import dotenv from "dotenv";
 
@@ -386,11 +388,23 @@ const runExpressServer = async () => {
             if (req.body.message) {
                 message = replaceHtmlEntities(req.body.message)
             }
+
+            const pathname = new URL(req.body.media).pathname;
+            const extension = path.extname(pathname).slice(1);
+
+
+            let fileType: AttachmentTypes;
+            if (['png','jpeg', 'jpg'].includes(extension)) {
+                fileType = AttachmentTypes.photo
+            } else {
+                fileType = AttachmentTypes.document
+            }
+
             const media: Attachment = {
                 url: req.body.media,
                 name: req.body.media_filename,
                 filesize: 0,
-                type: 'photo'
+                type: fileType
             }
             waServiceClass[stateId].sendMediaMessage(req.body.phone_number, media, message)
             res.json('success')

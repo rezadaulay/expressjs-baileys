@@ -1,7 +1,7 @@
 import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, WASocket, fetchLatestWaWebVersion } from '@whiskeysockets/baileys';
 // import QRCode from 'qrcode';
 import { /* writeFileSync, */ unlinkSync, readFileSync, mkdirSync, existsSync, rmSync, writeFileSync, createWriteStream } from 'fs';
-import { Attachment, ConnectionState, PreparedPhotoFile, PreparedVideoFile, PreparedDocumentFile } from './type';
+import { Attachment, ConnectionState, PreparedPhotoFile, PreparedVideoFile, PreparedDocumentFile, AttachmentTypes } from './type';
 import { dirname, join } from 'path'
 import { Boom } from '@hapi/boom'
 import { tmpdir } from 'os'
@@ -426,13 +426,13 @@ export default class WhatsApp extends EventEmitter {
               return reject('number not exists')
             }
 
-            const savedFile = await downloadTempRemoteFile(this.getCredId(), file.url, file.name);
+            // const savedFile = await downloadTempRemoteFile(this.getCredId(), file.url, file.name);
             // console.log('savedFile', savedFile)
 
-            if (file.type === 'photo') {
+            if (file.type === AttachmentTypes.photo) {
               await conn.sendMessage(formattedRecipient, { 
-                image: readFileSync(savedFile), 
-                // image: { url: file.url }, 
+                // image: readFileSync(savedFile), 
+                image: { url: file.url }, 
                 caption: messageContent
                 // gifPlayback: true
               });
@@ -454,8 +454,8 @@ export default class WhatsApp extends EventEmitter {
                 jpegThumbnail: jpegThumbnail
                 // gifPlayback: true
               });
-            } else {
-              const ext = file.path.split('.').pop();
+            } */ else {
+              const ext = file.url.split('.').pop();
               let mimetype = 'application/pdf';
               if (ext === 'csv') {
                 mimetype = 'text/csv';
@@ -467,13 +467,15 @@ export default class WhatsApp extends EventEmitter {
                 mimetype = 'application/vnd.ms-powerpoint';
               }
               await conn.sendMessage(formattedRecipient, { 
-                document: readFileSync(file.path), 
+                document: {
+                  url: file.url
+                }, 
                 caption: messageContent,
                 mimetype: mimetype,
                 fileName: file.name,
                 // gifPlayback: true
               });
-            } */
+            }
 
             return resolve(`success send message to ${formattedRecipient} with media ${file.url}`)
           } catch (error) {

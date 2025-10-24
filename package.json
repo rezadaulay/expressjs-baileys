@@ -42,6 +42,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-validator": "^7.0.1",
+    "jimp": "^0.16.13",
     "libphonenumber-js": "^1.10.58",
     "link-preview-js": "^3.0.5",
     "pm2": "^6.0.8",

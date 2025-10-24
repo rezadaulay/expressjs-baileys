@@ -1,9 +1,17 @@
+export enum AttachmentTypes {
+    'photo',
+    // 'video',
+    // 'audio',
+    // 'gif',
+    'document'
+}
+
 export interface Attachment {
     // path?: string;
     url: string;
     name: string;
     filesize: number;
-    type: string;
+    type: AttachmentTypes;
 }
 
 export enum ConnectionState {
