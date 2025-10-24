@@ -1,4 +1,4 @@
-import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, WASocket, fetchLatestWaWebVersion } from '@whiskeysockets/baileys';
 // import QRCode from 'qrcode';
 import { /* writeFileSync, */ unlinkSync, readFileSync, mkdirSync, existsSync, rmSync, writeFileSync, createWriteStream } from 'fs';
 import { Attachment, ConnectionState, PreparedPhotoFile, PreparedVideoFile, PreparedDocumentFile } from './type';
@@ -132,7 +132,9 @@ export default class WhatsApp extends EventEmitter {
         const database = new DatabaseHandler();
         const { useDatabaseAuth } = new AuthenticationFromDatabase(this.credId, database);
         const { state, saveState } = await useDatabaseAuth();
+        const { version, isLatest } = await fetchLatestWaWebVersion({});
         const sock = makeWASocket({
+            version,
             syncFullHistory: false,
             printQRInTerminal: true,
             auth: state,
