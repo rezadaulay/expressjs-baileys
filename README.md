@@ -27,28 +27,30 @@ git clone <repository-url>
 cd whatsapp-server
 nvm use            # or ensure Node 20+ is active
 npm install
+cp .env.example .env
 ```
 
 ## Running
 
 ```bash
 npm run dev        # development (watch mode)
-npm start          # production
+npm run build      # compile TypeScript into dist/
+npm start          # run the compiled production build
 npm test           # run the test suite (uses an in-memory database)
 ```
 
-The server listens on port `3000` by default (`PORT` env to override).
+The server automatically loads configuration from `.env` and listens on port `5000` by default. Environment variables supplied by the process override values from `.env`.
 
 ## Quick start
 
 1. Start the server: `npm run dev`
-2. Open `http://localhost:3000/my-account/qr` in a browser — this creates the session `my-account` and shows a QR code
+2. Open `http://localhost:5000/my-account/qr` in a browser — this creates the session `my-account` and shows a QR code
 3. On your phone: **WhatsApp → Linked Devices → Link a Device** → scan the QR
-4. Check the connection: `curl http://localhost:3000/my-account/status`
+4. Check the connection: `curl http://localhost:5000/my-account/status`
 5. Send a message:
 
 ```bash
-curl -X POST http://localhost:3000/my-account/send-message \
+curl -X POST http://localhost:5000/my-account/send-message \
   -H 'Content-Type: application/json' \
   -d '{"phone": "081234567890", "message": "Hello from the API!"}'
 ```
@@ -125,11 +127,17 @@ Log out from WhatsApp (removes the linked device on the phone), delete the sessi
 
 ## Configuration
 
-Environment variables:
+Copy the provided template before starting the server:
+
+```bash
+cp .env.example .env
+```
+
+The `.env` file is ignored by Git. Supported variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | HTTP port. |
+| `PORT` | `5000` | HTTP port. |
 | `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path. `:memory:` is supported (used by tests). |
 | `WA_WEB_VERSION` | *(library default)* | Pin the advertised WA Web version, e.g. `2.3000.1033893291`. Escape hatch for server-side version rejections without redeploying. |
 

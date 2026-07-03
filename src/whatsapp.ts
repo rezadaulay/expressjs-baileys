@@ -8,10 +8,10 @@ import makeWASocket, {
 } from 'baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
-import { useSQLiteAuthState } from './auth-store';
-import { listSessionIds } from './db';
-import { getSentMessage, storeSentMessage } from './message-store';
-import { MediaAttachment } from './utils';
+import { useSQLiteAuthState } from './auth-store.js';
+import { listSessionIds } from './db.js';
+import { getSentMessage, storeSentMessage } from './message-store.js';
+import { MediaAttachment } from './utils.js';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
