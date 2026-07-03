@@ -1,38 +1,72 @@
 import makeWASocket, {
+    AnyMessageContent,
     Browsers,
     DisconnectReason,
-    fetchLatestWaWebVersion,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore,
     WASocket
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { useSQLiteAuthState } from './auth-store';
 import { listSessionIds } from './db';
+import { getSentMessage, storeSentMessage } from './message-store';
 import { MediaAttachment } from './utils';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
-const logger = pino({ level: 'warn' });
+const logger = pino({ level: 'debug' });
+
+// cache hitungan retry pesan — harus hidup DI LUAR socket agar tidak ter-reset
+// saat reconnect (mencegah loop enkripsi/dekripsi; lihat Example/example.ts Baileys)
+class MsgRetryCache {
+    private map = new Map<string, unknown>();
+    get<T>(key: string): T | undefined {
+        return this.map.get(key) as T | undefined;
+    }
+    set<T>(key: string, value: T): void {
+        this.map.set(key, value);
+    }
+    del(key: string): void {
+        this.map.delete(key);
+    }
+    flushAll(): void {
+        this.map.clear();
+    }
+}
 
 export class WhatsAppSession {
     private sock: WASocket | null = null;
     private status: ConnectionStatus = 'disconnected';
     private currentQR: string | null = null;
     private stopped = false;
+    // per session, bukan per socket — bertahan melewati reconnect
+    private msgRetryCounterCache = new MsgRetryCache();
 
     constructor(readonly id: string) {}
 
     async connect(): Promise<void> {
         const { state, saveCreds, removeAll } = useSQLiteAuthState(this.id);
-        const { version } = await fetchLatestWaWebVersion({});
+        // fetchLatestBaileysVersion = versi WA Web terbaru yang teruji dengan library;
+        // versi live dari server WA (fetchLatestWaWebVersion) bisa terlalu baru
+        // dan merusak sesi enkripsi
+        const { version } = await fetchLatestBaileysVersion();
 
         this.status = 'connecting';
         this.sock = makeWASocket({
             version,
-            auth: state,
+            auth: {
+                creds: state.creds,
+                // cache di atas store SQLite — mengurangi masalah sesi signal basi
+                keys: makeCacheableSignalKeyStore(state.keys, logger)
+            },
             browser: Browsers.windows('Desktop'),
             printQRInTerminal: false,
-            logger
+            logger,
+            msgRetryCounterCache: this.msgRetryCounterCache,
+            // dipanggil Baileys saat penerima meminta pesan dikirim ulang (retry) —
+            // tanpa ini pesan bisa stuck "waiting for this message" di penerima
+            getMessage: async (key) => (key.id ? getSentMessage(this.id, key.id) : undefined)
         });
 
         this.sock.ev.on('creds.update', saveCreds);
@@ -97,13 +131,21 @@ export class WhatsAppSession {
         return { exists: false };
     }
 
+    // kirim + simpan hasilnya agar bisa dilayani ulang lewat getMessage saat retry
+    private async sendAndStore(jid: string, content: AnyMessageContent): Promise<void> {
+        const sent = await this.sock!.sendMessage(jid, content);
+        if (sent?.key?.id && sent.message) {
+            storeSentMessage(this.id, sent.key.id, sent.message);
+        }
+    }
+
     async sendTextMessage(phone: string, message: string): Promise<void> {
         const { exists, jid } = await this.checkNumber(phone);
         if (!exists || !jid) {
             throw new Error('number not registered on WhatsApp');
         }
 
-        await this.sock!.sendMessage(jid, { text: message });
+        await this.sendAndStore(jid, { text: message });
     }
 
     async sendMediaMessage(phone: string, media: MediaAttachment, caption = ''): Promise<void> {
@@ -115,17 +157,17 @@ export class WhatsAppSession {
         const url = { url: media.url };
         switch (media.kind) {
             case 'image':
-                await this.sock!.sendMessage(jid, { image: url, caption });
+                await this.sendAndStore(jid, { image: url, caption });
                 break;
             case 'video':
-                await this.sock!.sendMessage(jid, { video: url, caption });
+                await this.sendAndStore(jid, { video: url, caption });
                 break;
             case 'audio':
                 // audio tidak mendukung caption di WhatsApp
-                await this.sock!.sendMessage(jid, { audio: url, mimetype: media.mimetype });
+                await this.sendAndStore(jid, { audio: url, mimetype: media.mimetype });
                 break;
             default:
-                await this.sock!.sendMessage(jid, {
+                await this.sendAndStore(jid, {
                     document: url,
                     mimetype: media.mimetype,
                     fileName: media.filename,
