@@ -1,7 +1,7 @@
 import express, { Express } from 'express';
 import QRCode from 'qrcode';
-import { getOrCreateSession, getSessions, removeSession, WhatsAppSession } from './whatsapp';
-import { normalizePhone, parseMediaAttachment } from './utils';
+import { getOrCreateSession, getSessions, removeSession, WhatsAppSession } from './whatsapp.js';
+import { normalizePhone, parseMediaAttachment } from './utils.js';
 
 export const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/;
 

@@ -5,7 +5,7 @@ import {
     proto,
     SignalDataTypeMap
 } from 'baileys';
-import { db } from './db';
+import { db } from './db.js';
 
 const selectStmt = db.prepare('SELECT value FROM auth_state WHERE session_id = ? AND key = ?');
 const upsertStmt = db.prepare(

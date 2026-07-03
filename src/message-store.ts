@@ -1,5 +1,5 @@
 import { BufferJSON, proto } from 'baileys';
-import { db } from './db';
+import { db } from './db.js';
 
 // simpan pesan terkirim agar bisa dikirim ulang saat penerima meminta retry
 // (tanpa ini pesan bisa stuck "waiting for this message" di sisi penerima)
