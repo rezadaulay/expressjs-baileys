@@ -1,117 +1,65 @@
-import axios from 'axios';
-import { mkdirSync, existsSync, createWriteStream, readdirSync, statSync, unlinkSync } from 'fs';
-import { dirname, join } from 'path';
-
-export function timeout(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-export function replaceHtmlEntities(input: string): string {
-    const entities: { [key: string]: string } = {
-        '&#x27;': "'",
-        '&amp;#x27;': "'",
-        '&quot;': '"',
-        '&amp;quot;': '"',
-        '&lt;': '<',
-        '&amp;lt;': '<',
-        '&gt;': '>',
-        '&amp;gt;': '>',
-        '&nbsp;': ' ',
-        '&amp;nbsp;': ' ',
-        '&copy;': '©',
-        '&amp;copy;': '©',
-        '&reg;': '®',
-        '&amp;reg;': '®',
-        '&euro;': '€',
-        '&amp;euro;': '€',
-        '&amp;#x2F;': '/',
-        '&#x2F;': '/',
-        '\\\\': '\\', // Replace double backslash with a single backslash
-        '\/': '/',   // Replace forward slash
-        // '&amp;': '&', // Uncomment this if you need to replace '&' as well
-    };
-
-    return input.replace(/&#x27;|&amp;#x27;|&quot;|&amp;quot;|&lt;|&amp;lt;|&gt;|&amp;gt;|&nbsp;|&amp;nbsp;|&copy;|&amp;copy;|&reg;|&amp;reg;|&euro;|&amp;euro;|&amp;#x2F;|&#x2F;|\\\\|\//g, match => entities[match]);
+// normalisasi: buang non-digit, awalan 0 jadi 62; null jika tidak valid
+export function normalizePhone(phone: unknown): string | null {
+    if (typeof phone !== 'string') {
+        return null;
+    }
+    let normalized = phone.replace(/\D/g, '');
+    if (normalized.startsWith('0')) {
+        normalized = '62' + normalized.slice(1);
+    }
+    return /^\d{8,15}$/.test(normalized) ? normalized : null;
 }
 
-export function downloadTempRemoteFile (credId: string, url: string, saveAs: string): Promise<string> {
-    // console.log('downloadTempRemoteFile')
-    return new Promise(async (resolve, reject) => {
-      // (async () => {
-        // console.log('downloadTempRemoteFile')
-        const destinationFile = `tmp/${credId}/` + saveAs;
-        if (await existsSync(destinationFile)){
-          // console.log('destinationFile')
-          return resolve(destinationFile);
-        }
-        // make directory
-        const dir = dirname(destinationFile);
-        if (!await existsSync(dir)){
-          await mkdirSync(dir, {
-            recursive: true
-          });
-          // console.log('mkdirSync')
-        }
-        try {
-        } catch (e) {
-          return reject(e);
-        }
-        // save file
-        axios({
-          method: 'get',
-          url: url,
-          responseType: 'stream'
-        }).then(function (response) {
-          response.data.pipe(
-            createWriteStream(destinationFile)
-            .on('finish', function () {
-              setTimeout(() => {
-                // create cron job to delete tmp file periodically
-                resolve(destinationFile)
-              }, 500);
-            }).on('error', e => reject(e))
-          )
-        }).catch(e => reject(e));
-      // })
-    });
+export type MediaKind = 'image' | 'video' | 'audio' | 'document';
+
+export interface MediaAttachment {
+    kind: MediaKind;
+    url: string;
+    filename: string;
+    mimetype: string;
 }
 
-export function deleteOldTempRemoteFile (credId: string): Promise<string> {
-    // console.log('downloadTempRemoteFile')
-    return new Promise(async (resolve, reject) => {
-        const oneHourAgo = Date.now() - 3600000; // 1 hour in milliseconds
-        const result = [];
-        const folderPath = `tmp/${credId}`;
-        try {
-            const files = await readdirSync(folderPath);
-        
-            for (const file of files) {
-                const filePath = join(folderPath, file);
-                const stats = await statSync(filePath);
-        
-                if (stats.isFile() && stats.mtimeMs < oneHourAgo) {
-                    result.push(filePath);
-                }
-            }
-        } catch (error) {
-            //   console.error(`Error reading folder: ${error.message}`);
-            reject(error);
-        }
-
-        try {
-            if (result.length > 0) {
-                for (const filePath of result) {
-                    await unlinkSync(filePath);
-                    console.log(`Deleted file: ${filePath}`);
-                }
-                // return res.json({ message: 'No files to delete' });
-            }
-        } catch (error) {
-            // console.error(`Error deleting files: ${error.message}`);
-            // throw error;
-            reject(error);
-        }
-        
-        resolve('success');
-    });
+const MEDIA_KINDS: { [ext: string]: { kind: MediaKind; mimetype: string } } = {
+    png: { kind: 'image', mimetype: 'image/png' },
+    jpg: { kind: 'image', mimetype: 'image/jpeg' },
+    jpeg: { kind: 'image', mimetype: 'image/jpeg' },
+    mp4: { kind: 'video', mimetype: 'video/mp4' },
+    mp3: { kind: 'audio', mimetype: 'audio/mpeg' },
+    ogg: { kind: 'audio', mimetype: 'audio/ogg; codecs=opus' },
+    m4a: { kind: 'audio', mimetype: 'audio/mp4' },
+    pdf: { kind: 'document', mimetype: 'application/pdf' },
+    csv: { kind: 'document', mimetype: 'text/csv' },
+    txt: { kind: 'document', mimetype: 'text/plain' },
+    zip: { kind: 'document', mimetype: 'application/zip' },
+    doc: { kind: 'document', mimetype: 'application/msword' },
+    docx: { kind: 'document', mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    xls: { kind: 'document', mimetype: 'application/vnd.ms-excel' },
+    xlsx: { kind: 'document', mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    ppt: { kind: 'document', mimetype: 'application/vnd.ms-powerpoint' },
+    pptx: { kind: 'document', mimetype: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
 };
-  
+
+// tentukan jenis media dari ekstensi di path URL; null jika URL tidak valid.
+// ekstensi tak dikenal dikirim sebagai dokumen application/octet-stream
+export function parseMediaAttachment(mediaUrl: unknown, filename?: unknown): MediaAttachment | null {
+    if (typeof mediaUrl !== 'string') {
+        return null;
+    }
+    let pathname: string;
+    try {
+        const url = new URL(mediaUrl);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return null;
+        }
+        pathname = url.pathname;
+    } catch {
+        return null;
+    }
+
+    const basename = decodeURIComponent(pathname.split('/').pop() || '');
+    const ext = basename.includes('.') ? basename.split('.').pop()!.toLowerCase() : '';
+    const media = MEDIA_KINDS[ext] ?? { kind: 'document' as MediaKind, mimetype: 'application/octet-stream' };
+
+    const name = typeof filename === 'string' && filename.trim() ? filename.trim() : basename || 'file';
+    return { kind: media.kind, url: mediaUrl, filename: name, mimetype: media.mimetype };
+}
