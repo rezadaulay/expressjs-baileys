@@ -2,7 +2,11 @@
   "name": "whatsapp-server",
   "version": "1.0.0",
   "description": "Simple WhatsApp API server using Baileys",
+  "type": "module",
   "main": "src/index.ts",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -10,7 +14,7 @@
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.18",
+    "baileys": "7.0.0-rc13",
     "better-sqlite3": "^12.11.1",
     "express": "^4.19.2",
     "pino": "^9.6.0",

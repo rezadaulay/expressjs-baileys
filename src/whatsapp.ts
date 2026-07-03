@@ -5,7 +5,7 @@ import makeWASocket, {
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
     WASocket
-} from '@whiskeysockets/baileys';
+} from 'baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { useSQLiteAuthState } from './auth-store';
@@ -47,10 +47,11 @@ export class WhatsAppSession {
 
     async connect(): Promise<void> {
         const { state, saveCreds, removeAll } = useSQLiteAuthState(this.id);
-        // fetchLatestBaileysVersion = versi WA Web terbaru yang teruji dengan library;
-        // versi live dari server WA (fetchLatestWaWebVersion) bisa terlalu baru
-        // dan merusak sesi enkripsi
-        const { version } = await fetchLatestBaileysVersion();
+        // env WA_WEB_VERSION=2.3000.xxxxx = pengaman saat server WA menolak versi
+        // tertentu (pernah terjadi Feb 2026, Baileys issue #2370) tanpa perlu deploy
+        const version = process.env.WA_WEB_VERSION
+            ? (process.env.WA_WEB_VERSION.split('.').map(Number) as [number, number, number])
+            : (await fetchLatestBaileysVersion()).version;
 
         this.status = 'connecting';
         this.sock = makeWASocket({
@@ -60,8 +61,10 @@ export class WhatsAppSession {
                 // cache di atas store SQLite — mengurangi masalah sesi signal basi
                 keys: makeCacheableSignalKeyStore(state.keys, logger)
             },
-            browser: Browsers.windows('Desktop'),
-            printQRInTerminal: false,
+            // sejak ~2026-06-30 server WA menolak registrasi identitas Desktop
+            // (WIN32/DARWIN) dengan 428 sebelum QR — wajib WEB_BROWSER
+            // (Baileys issue #2677)
+            browser: Browsers.ubuntu('Chrome'),
             logger,
             msgRetryCounterCache: this.msgRetryCounterCache,
             // dipanggil Baileys saat penerima meminta pesan dikirim ulang (retry) —
@@ -97,7 +100,15 @@ export class WhatsAppSession {
                     removeAll();
                 }
                 if (!this.stopped) {
-                    this.connect();
+                    // 515 = restart wajib pasca-pairing, langsung sambung; selain itu
+                    // beri jeda agar tidak hammering saat server WA menolak berulang
+                    if (statusCode === DisconnectReason.restartRequired) {
+                        this.connect();
+                    } else {
+                        setTimeout(() => {
+                            if (!this.stopped) this.connect();
+                        }, 5000);
+                    }
                 }
             }
         });

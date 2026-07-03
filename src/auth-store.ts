@@ -4,7 +4,7 @@ import {
     initAuthCreds,
     proto,
     SignalDataTypeMap
-} from '@whiskeysockets/baileys';
+} from 'baileys';
 import { db } from './db';
 
 const selectStmt = db.prepare('SELECT value FROM auth_state WHERE session_id = ? AND key = ?');

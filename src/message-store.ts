@@ -1,4 +1,4 @@
-import { BufferJSON, proto } from '@whiskeysockets/baileys';
+import { BufferJSON, proto } from 'baileys';
 import { db } from './db';
 
 // simpan pesan terkirim agar bisa dikirim ulang saat penerima meminta retry
