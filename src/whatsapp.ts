@@ -8,6 +8,7 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { useSQLiteAuthState } from './auth-store';
 import { listSessionIds } from './db';
+import { MediaAttachment } from './utils';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
@@ -103,6 +104,56 @@ export class WhatsAppSession {
         }
 
         await this.sock!.sendMessage(jid, { text: message });
+    }
+
+    async sendMediaMessage(phone: string, media: MediaAttachment, caption = ''): Promise<void> {
+        const { exists, jid } = await this.checkNumber(phone);
+        if (!exists || !jid) {
+            throw new Error('number not registered on WhatsApp');
+        }
+
+        const url = { url: media.url };
+        switch (media.kind) {
+            case 'image':
+                await this.sock!.sendMessage(jid, { image: url, caption });
+                break;
+            case 'video':
+                await this.sock!.sendMessage(jid, { video: url, caption });
+                break;
+            case 'audio':
+                // audio tidak mendukung caption di WhatsApp
+                await this.sock!.sendMessage(jid, { audio: url, mimetype: media.mimetype });
+                break;
+            default:
+                await this.sock!.sendMessage(jid, {
+                    document: url,
+                    mimetype: media.mimetype,
+                    fileName: media.filename,
+                    caption
+                });
+        }
+    }
+
+    // putus-sambung websocket tanpa menghapus kredensial (untuk koneksi stuck)
+    restartSocket(): void {
+        this.sock?.end(new Error('restart'));
+    }
+
+    // reset total: buang kredensial lalu mulai sesi baru (QR baru).
+    // beda dengan logout(): tidak lapor ke server WA — untuk sesi rusak/stuck
+    async restart(): Promise<void> {
+        this.stopped = true;
+        try {
+            this.sock?.end(new Error('restart'));
+        } catch {
+            // socket mungkin sudah mati
+        }
+        this.sock = null;
+        this.status = 'disconnected';
+        this.currentQR = null;
+        useSQLiteAuthState(this.id).removeAll();
+        this.stopped = false;
+        await this.connect();
     }
 
     async logout(): Promise<void> {
