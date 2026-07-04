@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getTenancyConfig } from '../src/config';
 
-test('tenancy default adalah single dengan session "default"', () => {
+test('default tenancy is single with the "default" session', () => {
     const prevMode = process.env.WA_MODE;
     const prevDefaultSession = process.env.WA_DEFAULT_SESSION;
     const prevDefaultCountryCode = process.env.WA_DEFAULT_COUNTRY_CODE;
@@ -38,7 +38,7 @@ test('tenancy default adalah single dengan session "default"', () => {
     }
 });
 
-test('tenancy membaca mode multi dan default session custom', () => {
+test('tenancy reads multi mode and a custom default session', () => {
     const prevMode = process.env.WA_MODE;
     const prevDefaultSession = process.env.WA_DEFAULT_SESSION;
     const prevDefaultCountryCode = process.env.WA_DEFAULT_COUNTRY_CODE;
@@ -74,13 +74,13 @@ test('tenancy membaca mode multi dan default session custom', () => {
     }
 });
 
-test('WA_DEFAULT_SESSION invalid ditolak', () => {
+test('invalid WA_DEFAULT_SESSION is rejected', () => {
     const prevDefaultSession = process.env.WA_DEFAULT_SESSION;
 
     process.env.WA_DEFAULT_SESSION = 'bad name';
 
     try {
-        assert.throws(() => getTenancyConfig(), /WA_DEFAULT_SESSION tidak valid/);
+        assert.throws(() => getTenancyConfig(), /WA_DEFAULT_SESSION is invalid/);
     } finally {
         if (prevDefaultSession === undefined) {
             delete process.env.WA_DEFAULT_SESSION;
@@ -90,13 +90,13 @@ test('WA_DEFAULT_SESSION invalid ditolak', () => {
     }
 });
 
-test('WA_DEFAULT_COUNTRY_CODE invalid ditolak', () => {
+test('invalid WA_DEFAULT_COUNTRY_CODE is rejected', () => {
     const prevDefaultCountryCode = process.env.WA_DEFAULT_COUNTRY_CODE;
 
     process.env.WA_DEFAULT_COUNTRY_CODE = '+62';
 
     try {
-        assert.throws(() => getTenancyConfig(), /WA_DEFAULT_COUNTRY_CODE tidak valid/);
+        assert.throws(() => getTenancyConfig(), /WA_DEFAULT_COUNTRY_CODE is invalid/);
     } finally {
         if (prevDefaultCountryCode === undefined) {
             delete process.env.WA_DEFAULT_COUNTRY_CODE;

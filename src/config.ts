@@ -19,11 +19,11 @@ export function getTenancyConfig(): TenancyConfig {
     const defaultCountryCode = process.env.WA_DEFAULT_COUNTRY_CODE?.trim() || '62';
 
     if (!SESSION_NAME_RE.test(defaultSession)) {
-        throw new Error('WA_DEFAULT_SESSION tidak valid (huruf/angka/-/_, maks 32 karakter)');
+        throw new Error('WA_DEFAULT_SESSION is invalid (letters/numbers/-/_, max 32 characters)');
     }
 
     if (!isValidCountryCode(defaultCountryCode)) {
-        throw new Error('WA_DEFAULT_COUNTRY_CODE tidak valid (hanya digit, panjang 1-4)');
+        throw new Error('WA_DEFAULT_COUNTRY_CODE is invalid (digits only, length 1-4)');
     }
 
     return { mode, defaultSession, defaultCountryCode };

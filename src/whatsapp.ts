@@ -18,8 +18,8 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 const logger = pino({ level: 'debug' });
 
-// cache hitungan retry pesan — harus hidup DI LUAR socket agar tidak ter-reset
-// saat reconnect (mencegah loop enkripsi/dekripsi; lihat Example/example.ts Baileys)
+// Message retry counter cache must live OUTSIDE the socket so reconnects do not reset it
+// and trigger encryption/decryption retry loops; see Baileys Example/example.ts.
 class MsgRetryCache {
     private map = new Map<string, unknown>();
     get<T>(key: string): T | undefined {
@@ -41,15 +41,15 @@ export class WhatsAppSession {
     private status: ConnectionStatus = 'disconnected';
     private currentQR: string | null = null;
     private stopped = false;
-    // per session, bukan per socket — bertahan melewati reconnect
+    // Per session, not per socket, so it survives reconnects.
     private msgRetryCounterCache = new MsgRetryCache();
 
     constructor(readonly id: string) {}
 
     async connect(): Promise<void> {
         const { state, saveCreds, removeAll } = useSQLiteAuthState(this.id);
-        // env WA_WEB_VERSION=2.3000.xxxxx = pengaman saat server WA menolak versi
-        // tertentu (pernah terjadi Feb 2026, Baileys issue #2370) tanpa perlu deploy
+        // WA_WEB_VERSION=2.3000.xxxxx lets us pin a fallback if WhatsApp rejects
+        // a specific web version again (as happened in February 2026, Baileys #2370).
         const version = process.env.WA_WEB_VERSION
             ? (process.env.WA_WEB_VERSION.split('.').map(Number) as [number, number, number])
             : (await fetchLatestBaileysVersion()).version;
@@ -59,17 +59,17 @@ export class WhatsAppSession {
             version,
             auth: {
                 creds: state.creds,
-                // cache di atas store SQLite — mengurangi masalah sesi signal basi
+                // Cache on top of the SQLite store to reduce stale Signal session issues.
                 keys: makeCacheableSignalKeyStore(state.keys, logger)
             },
-            // sejak ~2026-06-30 server WA menolak registrasi identitas Desktop
-            // (WIN32/DARWIN) dengan 428 sebelum QR — wajib WEB_BROWSER
-            // (Baileys issue #2677)
+            // Since around 2026-06-30 WhatsApp has rejected Desktop identity
+            // registration (WIN32/DARWIN) with 428 before QR, so WEB_BROWSER is required
+            // (Baileys issue #2677).
             browser: Browsers.ubuntu('Chrome'),
             logger,
             msgRetryCounterCache: this.msgRetryCounterCache,
-            // dipanggil Baileys saat penerima meminta pesan dikirim ulang (retry) —
-            // tanpa ini pesan bisa stuck "waiting for this message" di penerima
+            // Called by Baileys when the recipient requests a retry. Without this,
+            // the recipient can get stuck on "waiting for this message".
             getMessage: async (key) => (key.id ? getSentMessage(this.id, key.id) : undefined)
         });
 
@@ -81,28 +81,28 @@ export class WhatsAppSession {
             if (qr) {
                 this.currentQR = qr;
                 this.status = 'disconnected';
-                console.log(`[${this.id}] QR code baru tersedia — buka /${this.id}/qr untuk scan`);
+                console.log(`[${this.id}] A new QR code is available. Open /${this.id}/qr to scan it.`);
             }
 
             if (connection === 'open') {
                 this.status = 'connected';
                 this.currentQR = null;
-                console.log(`[${this.id}] WhatsApp terhubung sebagai ${this.sock?.user?.id}`);
+                console.log(`[${this.id}] WhatsApp connected as ${this.sock?.user?.id}`);
             }
 
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
                 const loggedOut = statusCode === DisconnectReason.loggedOut;
                 this.status = 'disconnected';
-                console.log(`[${this.id}] Koneksi terputus (code ${statusCode}), logged out: ${loggedOut}`);
+                console.log(`[${this.id}] Connection closed (code ${statusCode}), logged out: ${loggedOut}`);
 
                 if (loggedOut) {
-                    // sesi tidak valid lagi — hapus kredensial agar QR baru muncul
+                    // The session is no longer valid, so clear credentials and require a new QR.
                     removeAll();
                 }
                 if (!this.stopped) {
-                    // 515 = restart wajib pasca-pairing, langsung sambung; selain itu
-                    // beri jeda agar tidak hammering saat server WA menolak berulang
+                    // 515 means an immediate post-pairing restart is required. For anything
+                    // else, wait a bit so we do not hammer the server on repeated failures.
                     if (statusCode === DisconnectReason.restartRequired) {
                         this.connect();
                     } else {
@@ -143,7 +143,7 @@ export class WhatsAppSession {
         return { exists: false };
     }
 
-    // kirim + simpan hasilnya agar bisa dilayani ulang lewat getMessage saat retry
+    // Send and persist the message so getMessage can replay it during retries.
     private async sendAndStore(jid: string, content: AnyMessageContent): Promise<void> {
         const sent = await this.sock!.sendMessage(jid, content);
         if (sent?.key?.id && sent.message) {
@@ -175,7 +175,7 @@ export class WhatsAppSession {
                 await this.sendAndStore(jid, { video: url, caption });
                 break;
             case 'audio':
-                // audio tidak mendukung caption di WhatsApp
+                // Audio does not support captions in WhatsApp.
                 await this.sendAndStore(jid, { audio: url, mimetype: media.mimetype });
                 break;
             default:
@@ -188,19 +188,19 @@ export class WhatsAppSession {
         }
     }
 
-    // putus-sambung websocket tanpa menghapus kredensial (untuk koneksi stuck)
+    // Reconnect the websocket without clearing credentials, useful for stuck connections.
     restartSocket(): void {
         this.sock?.end(new Error('restart'));
     }
 
-    // reset total: buang kredensial lalu mulai sesi baru (QR baru).
-    // beda dengan logout(): tidak lapor ke server WA — untuk sesi rusak/stuck
+    // Full reset: clear credentials and start a fresh session with a new QR.
+    // Unlike logout(), this does not notify WhatsApp and is meant for broken/stuck sessions.
     async restart(): Promise<void> {
         this.stopped = true;
         try {
             this.sock?.end(new Error('restart'));
         } catch {
-            // socket mungkin sudah mati
+            // The socket may already be closed.
         }
         this.sock = null;
         this.status = 'disconnected';
@@ -215,7 +215,7 @@ export class WhatsAppSession {
         try {
             await this.sock?.logout();
         } catch {
-            // socket mungkin sudah mati — creds tetap harus dihapus
+            // The socket may already be closed, but credentials still need to be removed.
         }
         this.sock = null;
         this.status = 'disconnected';
@@ -244,17 +244,17 @@ export function removeSession(id: string): void {
     sessions.delete(id);
 }
 
-// saat single-tenant, hanya pulihkan/buat sesi default.
-// saat multi-tenant, pulihkan semua sesi yang punya kredensial tersimpan.
+// In single-tenant mode, only restore or create the default session.
+// In multi-tenant mode, restore every session that still has stored credentials.
 export function restoreSessions(config: TenancyConfig): void {
     if (config.mode === 'single') {
-        console.log(`[${config.defaultSession}] menyiapkan sesi default...`);
+        console.log(`[${config.defaultSession}] Preparing the default session...`);
         getOrCreateSession(config.defaultSession);
         return;
     }
 
     for (const id of listSessionIds()) {
-        console.log(`[${id}] memulihkan sesi dari database...`);
+        console.log(`[${id}] Restoring session from the database...`);
         getOrCreateSession(id);
     }
 }

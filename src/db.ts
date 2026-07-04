@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-// override via env untuk testing (mis. ':memory:')
+// Allow overriding via env for tests, e.g. ':memory:'.
 const DB_PATH = process.env.WA_DB_PATH || './data/whatsapp.db';
 
 if (DB_PATH !== ':memory:') {
