@@ -30,7 +30,7 @@ export function createApp(): Express {
         });
     } else {
         app.all('/sessions', (_req, res) => {
-            res.status(404).json({ error: 'endpoint /sessions hanya tersedia saat WA_MODE=multi' });
+            res.status(404).json({ error: 'the /sessions endpoint is only available when WA_MODE=multi' });
         });
     }
 
@@ -39,7 +39,7 @@ export function createApp(): Express {
     router.use((req, res, next) => {
         const id = tenancy.mode === 'multi' ? (req.params as { session: string }).session : tenancy.defaultSession;
         if (tenancy.mode === 'multi' && !SESSION_NAME_RE.test(id)) {
-            return res.status(400).json({ error: 'nama session tidak valid (huruf/angka/-/_, maks 32 karakter)' });
+            return res.status(400).json({ error: 'invalid session name (letters/numbers/-/_, max 32 characters)' });
         }
         res.locals.sessionId = id;
         next();
@@ -63,7 +63,7 @@ export function createApp(): Express {
 
         const qr = wa.getQR();
         if (!qr) {
-            return res.status(404).json({ message: 'QR belum tersedia, coba lagi beberapa detik' });
+            return res.status(404).json({ message: 'QR is not available yet, try again in a few seconds' });
         }
 
         const dataUrl = await QRCode.toDataURL(qr);
@@ -72,9 +72,7 @@ export function createApp(): Express {
             <html>
                 <head><meta http-equiv="refresh" content="20"></head>
                 <body style="display:flex;flex-direction:column;align-items:center;font-family:sans-serif">
-                    <h1>Scan dengan WhatsApp — sesi "${wa.id}"</h1>
                     <img src="${dataUrl}" width="300" height="300" />
-                    <p>WhatsApp &gt; Perangkat Tertaut &gt; Tautkan Perangkat</p>
                 </body>
             </html>
         `);
@@ -83,12 +81,12 @@ export function createApp(): Express {
     router.get('/check-number', async (req, res) => {
         const countryCode = resolveCountryCode(req.query.countryCode);
         if (!countryCode) {
-            return res.status(400).json({ error: 'query param countryCode tidak valid' });
+            return res.status(400).json({ error: 'invalid countryCode query parameter' });
         }
 
         const normalized = normalizePhone(req.query.phone, countryCode);
         if (!normalized) {
-            return res.status(400).json({ error: 'query param phone wajib diisi dengan nomor valid' });
+            return res.status(400).json({ error: 'the phone query parameter must be a valid phone number' });
         }
 
         const wa = getSession(res);
@@ -98,10 +96,10 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
+                return res.status(400).json({ error: `WhatsApp is not connected yet, scan the QR first at ${getQrPath(wa)}` });
             }
             console.error(`[${wa.id}] check-number error:`, e);
-            res.status(500).json({ error: 'gagal mengecek nomor' });
+            res.status(500).json({ error: 'failed to check the phone number' });
         }
     });
 
@@ -109,17 +107,17 @@ export function createApp(): Express {
         const { phone, message, countryCode } = req.body ?? {};
 
         if (typeof message !== 'string' || !message.trim()) {
-            return res.status(400).json({ error: 'phone dan message wajib diisi' });
+            return res.status(400).json({ error: 'phone and message are required' });
         }
 
         const effectiveCountryCode = resolveCountryCode(countryCode);
         if (!effectiveCountryCode) {
-            return res.status(400).json({ error: 'countryCode tidak valid' });
+            return res.status(400).json({ error: 'invalid countryCode' });
         }
 
         const normalized = normalizePhone(phone, effectiveCountryCode);
         if (!normalized) {
-            return res.status(400).json({ error: 'nomor telepon tidak valid' });
+            return res.status(400).json({ error: 'invalid phone number' });
         }
 
         const wa = getSession(res);
@@ -129,13 +127,13 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
+                return res.status(400).json({ error: `WhatsApp is not connected yet, scan the QR first at ${getQrPath(wa)}` });
             }
             if (msg === 'number not registered on WhatsApp') {
-                return res.status(400).json({ error: 'nomor tidak terdaftar di WhatsApp' });
+                return res.status(400).json({ error: 'phone number is not registered on WhatsApp' });
             }
             console.error(`[${wa.id}] send-message error:`, e);
-            res.status(500).json({ error: 'gagal mengirim pesan' });
+            res.status(500).json({ error: 'failed to send the message' });
         }
     });
 
@@ -144,21 +142,21 @@ export function createApp(): Express {
 
         const effectiveCountryCode = resolveCountryCode(countryCode);
         if (!effectiveCountryCode) {
-            return res.status(400).json({ error: 'countryCode tidak valid' });
+            return res.status(400).json({ error: 'invalid countryCode' });
         }
 
         const normalized = normalizePhone(phone, effectiveCountryCode);
         if (!normalized) {
-            return res.status(400).json({ error: 'nomor telepon tidak valid' });
+            return res.status(400).json({ error: 'invalid phone number' });
         }
 
         const attachment = parseMediaAttachment(media, filename);
         if (!attachment) {
-            return res.status(400).json({ error: 'media wajib diisi dengan URL http/https yang valid' });
+            return res.status(400).json({ error: 'media must be a valid http/https URL' });
         }
 
         if (caption !== undefined && typeof caption !== 'string') {
-            return res.status(400).json({ error: 'caption harus berupa teks' });
+            return res.status(400).json({ error: 'caption must be a string' });
         }
 
         const wa = getSession(res);
@@ -168,33 +166,33 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
+                return res.status(400).json({ error: `WhatsApp is not connected yet, scan the QR first at ${getQrPath(wa)}` });
             }
             if (msg === 'number not registered on WhatsApp') {
-                return res.status(400).json({ error: 'nomor tidak terdaftar di WhatsApp' });
+                return res.status(400).json({ error: 'phone number is not registered on WhatsApp' });
             }
             console.error(`[${wa.id}] send-media error:`, e);
-            res.status(500).json({ error: 'gagal mengirim media' });
+            res.status(500).json({ error: 'failed to send the media' });
         }
     });
 
     router.post('/restart-socket', (_req, res) => {
         const wa = getSession(res);
         wa.restartSocket();
-        res.json({ success: true, message: 'websocket dimulai ulang, koneksi akan tersambung kembali otomatis' });
+        res.json({ success: true, message: 'the websocket was restarted and will reconnect automatically' });
     });
 
     router.post('/restart', async (_req, res) => {
         const wa = getSession(res);
         await wa.restart();
-        res.json({ success: true, message: `sesi direset — scan QR baru di ${getQrPath(wa)}` });
+        res.json({ success: true, message: `session reset, scan a new QR at ${getQrPath(wa)}` });
     });
 
     router.post('/logout', async (_req, res) => {
         const wa = getSession(res);
         await wa.logout();
         removeSession(wa.id);
-        res.json({ success: true, message: `sesi "${wa.id}" dihapus` });
+        res.json({ success: true, message: `session "${wa.id}" deleted` });
     });
 
     app.use(tenancy.mode === 'multi' ? '/:session' : '/', router);

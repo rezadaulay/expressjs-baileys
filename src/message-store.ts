@@ -1,8 +1,8 @@
 import { BufferJSON, proto } from 'baileys';
 import { db } from './db.js';
 
-// simpan pesan terkirim agar bisa dikirim ulang saat penerima meminta retry
-// (tanpa ini pesan bisa stuck "waiting for this message" di sisi penerima)
+// Store sent messages so they can be replayed when the recipient requests a retry.
+// Without this, the recipient can get stuck on "waiting for this message".
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS sent_messages (
@@ -14,7 +14,7 @@ db.exec(`
     )
 `);
 
-// retry hanya relevan beberapa saat setelah kirim — buang yang lebih tua dari 7 hari
+// Retries are only relevant shortly after sending, so drop entries older than 7 days.
 db.prepare('DELETE FROM sent_messages WHERE created_at < ?').run(Date.now() - 7 * 24 * 3600 * 1000);
 
 const insertStmt = db.prepare(

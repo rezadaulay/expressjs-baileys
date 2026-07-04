@@ -1,26 +1,26 @@
-// WA_DB_PATH=:memory: diset oleh script npm test — tidak bisa diset di sini
-// karena import di-hoist sebelum assignment berjalan
+// WA_DB_PATH=:memory: is set by the npm test script and cannot be set here
+// because imports are hoisted before runtime assignment happens.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { storeSentMessage, getSentMessage } from '../src/message-store';
 
 if (process.env.WA_DB_PATH !== ':memory:') {
-    throw new Error('Test harus dijalankan via `npm test` agar memakai DB in-memory, bukan database asli');
+    throw new Error('Tests must be run via `npm test` so they use the in-memory DB, not the real database');
 }
 
-test('pesan tersimpan bisa diambil kembali utuh', () => {
-    const message = { conversation: 'halo dunia' };
+test('a stored message can be retrieved intact', () => {
+    const message = { conversation: 'hello world' };
     storeSentMessage('tenant-x', 'MSG1', message);
 
     assert.deepEqual(getSentMessage('tenant-x', 'MSG1'), message);
 });
 
-test('pesan dengan Buffer (media key) tetap utuh setelah roundtrip', () => {
+test('a message with a Buffer media key survives a roundtrip intact', () => {
     const message = {
         imageMessage: {
             url: 'https://mmg.whatsapp.net/x',
-            mediaKey: Buffer.from('kunci-rahasia-32-byte'.padEnd(32, 'x')),
-            caption: 'tes'
+            mediaKey: Buffer.from('secret-32-byte-media-key'.padEnd(32, 'x')),
+            caption: 'test'
         }
     } as any;
     storeSentMessage('tenant-x', 'MSG2', message);
@@ -30,14 +30,14 @@ test('pesan dengan Buffer (media key) tetap utuh setelah roundtrip', () => {
     assert.ok(message.imageMessage.mediaKey.equals(loaded.imageMessage.mediaKey));
 });
 
-test('pesan tidak ditemukan mengembalikan undefined', () => {
-    assert.equal(getSentMessage('tenant-x', 'TIDAK-ADA'), undefined);
+test('missing messages return undefined', () => {
+    assert.equal(getSentMessage('tenant-x', 'MISSING'), undefined);
 });
 
-test('message store terisolasi antar session', () => {
-    storeSentMessage('tenant-p', 'SAMA', { conversation: 'punya P' });
-    storeSentMessage('tenant-q', 'SAMA', { conversation: 'punya Q' });
+test('the message store is isolated between sessions', () => {
+    storeSentMessage('tenant-p', 'SAME', { conversation: 'belongs to P' });
+    storeSentMessage('tenant-q', 'SAME', { conversation: 'belongs to Q' });
 
-    assert.deepEqual(getSentMessage('tenant-p', 'SAMA'), { conversation: 'punya P' });
-    assert.deepEqual(getSentMessage('tenant-q', 'SAMA'), { conversation: 'punya Q' });
+    assert.deepEqual(getSentMessage('tenant-p', 'SAME'), { conversation: 'belongs to P' });
+    assert.deepEqual(getSentMessage('tenant-q', 'SAME'), { conversation: 'belongs to Q' });
 });

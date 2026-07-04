@@ -1,13 +1,13 @@
-// WA_DB_PATH=:memory: diset oleh script npm test — tidak bisa diset di sini
-// karena import di-hoist sebelum assignment berjalan
+// WA_DB_PATH=:memory: is set by the npm test script and cannot be set here
+// because imports are hoisted before runtime assignment happens.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
 import { createApp } from '../src/app';
 import { SESSION_NAME_RE } from '../src/session';
 
-// Catatan: route yang menyentuh sesi valid akan memicu koneksi nyata ke WhatsApp,
-// jadi test HTTP di sini hanya mencakup jalur yang tidak menyentuh jaringan.
+// Note: routes that touch a valid session trigger a real WhatsApp connection,
+// so these HTTP tests only cover paths that do not reach the network.
 
 async function withServer(
     env: Partial<Record<'WA_MODE' | 'WA_DEFAULT_SESSION' | 'WA_DEFAULT_COUNTRY_CODE', string | undefined>>,
@@ -68,15 +68,15 @@ async function withServer(
     }
 }
 
-test('mode single menjadi default dan /sessions nonaktif', async () => {
+test('single mode is the default and /sessions is disabled', async () => {
     await withServer({}, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/sessions`);
         assert.equal(res.status, 404);
-        assert.deepEqual(await res.json(), { error: 'endpoint /sessions hanya tersedia saat WA_MODE=multi' });
+        assert.deepEqual(await res.json(), { error: 'the /sessions endpoint is only available when WA_MODE=multi' });
     });
 });
 
-test('GET /sessions tetap tersedia di mode multi', async () => {
+test('GET /sessions remains available in multi mode', async () => {
     await withServer({ WA_MODE: 'multi' }, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/sessions`);
         assert.equal(res.status, 200);
@@ -84,49 +84,49 @@ test('GET /sessions tetap tersedia di mode multi', async () => {
     });
 });
 
-test('nama session dengan karakter tidak valid ditolak 400 di mode multi', async () => {
+test('invalid session name characters return 400 in multi mode', async () => {
     await withServer({ WA_MODE: 'multi' }, async (baseUrl) => {
         for (const bad of ['bad%20name', 'a.b', 'x%2Fy']) {
             const res = await fetch(`${baseUrl}/${bad}/status`);
-            assert.equal(res.status, 400, `"${bad}" harus ditolak`);
+            assert.equal(res.status, 400, `"${bad}" should be rejected`);
             const body = (await res.json()) as { error: string };
-            assert.match(body.error, /nama session tidak valid/);
+            assert.match(body.error, /invalid session name/);
         }
     });
 });
 
-test('nama session lebih dari 32 karakter ditolak di mode multi', async () => {
+test('session names longer than 32 characters are rejected in multi mode', async () => {
     await withServer({ WA_MODE: 'multi' }, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/${'a'.repeat(33)}/status`);
         assert.equal(res.status, 400);
     });
 });
 
-test('countryCode query invalid ditolak sebelum cek koneksi WA', async () => {
+test('invalid countryCode query is rejected before checking the WhatsApp connection', async () => {
     await withServer({}, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/check-number?phone=081234567890&countryCode=%2B62`);
         assert.equal(res.status, 400);
-        assert.deepEqual(await res.json(), { error: 'query param countryCode tidak valid' });
+        assert.deepEqual(await res.json(), { error: 'invalid countryCode query parameter' });
     });
 });
 
-test('countryCode body invalid ditolak di send-message', async () => {
+test('invalid body countryCode is rejected in send-message', async () => {
     await withServer({}, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/send-message`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 phone: '081234567890',
-                message: 'tes',
+                message: 'test',
                 countryCode: '+62'
             })
         });
         assert.equal(res.status, 400);
-        assert.deepEqual(await res.json(), { error: 'countryCode tidak valid' });
+        assert.deepEqual(await res.json(), { error: 'invalid countryCode' });
     });
 });
 
-test('countryCode body invalid ditolak di send-media', async () => {
+test('invalid body countryCode is rejected in send-media', async () => {
     await withServer({}, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/send-media`, {
             method: 'POST',
@@ -138,15 +138,15 @@ test('countryCode body invalid ditolak di send-media', async () => {
             })
         });
         assert.equal(res.status, 400);
-        assert.deepEqual(await res.json(), { error: 'countryCode tidak valid' });
+        assert.deepEqual(await res.json(), { error: 'invalid countryCode' });
     });
 });
 
-test('SESSION_NAME_RE menerima nama yang wajar', () => {
+test('SESSION_NAME_RE accepts reasonable names', () => {
     for (const ok of ['toko-a', 'CS_1', 'tenant123', 'a']) {
-        assert.ok(SESSION_NAME_RE.test(ok), `"${ok}" harus valid`);
+        assert.ok(SESSION_NAME_RE.test(ok), `"${ok}" should be valid`);
     }
     for (const bad of ['', 'a b', 'a/b', 'a.b', 'a'.repeat(33)]) {
-        assert.ok(!SESSION_NAME_RE.test(bad), `"${bad}" harus ditolak`);
+        assert.ok(!SESSION_NAME_RE.test(bad), `"${bad}" should be rejected`);
     }
 });

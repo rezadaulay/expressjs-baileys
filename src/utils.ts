@@ -1,5 +1,5 @@
-// normalisasi: buang non-digit, awalan 0 jadi country code default/request;
-// nomor yang sudah internasional dibiarkan. null jika tidak valid.
+// Normalize by stripping non-digits. Numbers starting with 0 are converted to the
+// default/requested country code. Already-international numbers are left as-is.
 export function normalizePhone(phone: unknown, countryCode = '62'): string | null {
     if (typeof phone !== 'string') {
         return null;
@@ -40,8 +40,8 @@ const MEDIA_KINDS: { [ext: string]: { kind: MediaKind; mimetype: string } } = {
     pptx: { kind: 'document', mimetype: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
 };
 
-// tentukan jenis media dari ekstensi di path URL; null jika URL tidak valid.
-// ekstensi tak dikenal dikirim sebagai dokumen application/octet-stream
+// Detect the media type from the URL path extension; return null for invalid URLs.
+// Unknown extensions are sent as application/octet-stream documents.
 export function parseMediaAttachment(mediaUrl: unknown, filename?: unknown): MediaAttachment | null {
     if (typeof mediaUrl !== 'string') {
         return null;
