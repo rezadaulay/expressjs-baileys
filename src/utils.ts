@@ -1,11 +1,12 @@
-// normalisasi: buang non-digit, awalan 0 jadi 62; null jika tidak valid
-export function normalizePhone(phone: unknown): string | null {
+// normalisasi: buang non-digit, awalan 0 jadi country code default/request;
+// nomor yang sudah internasional dibiarkan. null jika tidak valid.
+export function normalizePhone(phone: unknown, countryCode = '62'): string | null {
     if (typeof phone !== 'string') {
         return null;
     }
     let normalized = phone.replace(/\D/g, '');
     if (normalized.startsWith('0')) {
-        normalized = '62' + normalized.slice(1);
+        normalized = countryCode + normalized.slice(1);
     }
     return /^\d{8,15}$/.test(normalized) ? normalized : null;
 }

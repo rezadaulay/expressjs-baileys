@@ -46,6 +46,7 @@ By default:
 
 - `WA_MODE=single`
 - `WA_DEFAULT_SESSION=default`
+- `WA_DEFAULT_COUNTRY_CODE=62`
 
 That means the server exposes root-level endpoints and stores credentials under the `default` session unless you change it.
 
@@ -65,6 +66,12 @@ curl -X POST http://localhost:5000/send-message \
 
 If you already have production data under another session name, set `WA_DEFAULT_SESSION` to that exact name before first boot in single-tenant mode. That avoids re-pairing and continues using the same stored credentials.
 
+For phone normalization, the default behavior is:
+
+- numbers starting with `0` are rewritten using `WA_DEFAULT_COUNTRY_CODE`
+- numbers already in international form (with or without `+`) are left as-is after non-digits are stripped
+- any request can override the default with an optional `countryCode`
+
 ## Multi-tenant mode
 
 Set this in `.env`:
@@ -80,7 +87,7 @@ curl http://localhost:5000/my-account/status
 
 curl -X POST http://localhost:5000/my-account/send-message \
   -H 'Content-Type: application/json' \
-  -d '{"phone": "081234567890", "message": "Hello from the API!"}'
+  -d '{"phone": "081234567890", "countryCode": "62", "message": "Hello from the API!"}'
 ```
 
 Session names may contain letters, digits, `-`, and `_` (max 32 characters). Each session is an independent WhatsApp account.
@@ -115,6 +122,10 @@ Connection state of one session: `connected`, `connecting`, or `disconnected`. I
 
 Check whether a number is registered on WhatsApp without sending anything.
 
+Optional query param:
+
+- `countryCode=44` — used only when `phone` starts with `0`
+
 ```json
 { "phone": "6281234567890", "exists": true }
 ```
@@ -125,7 +136,8 @@ Send a text message.
 
 | Field | Type | Description |
 |---|---|---|
-| `phone` | string | Recipient number. Non-digits are stripped; a leading `0` is rewritten to `62` (Indonesia). |
+| `phone` | string | Recipient number. Non-digits are stripped; a leading `0` is rewritten using `countryCode`, or `WA_DEFAULT_COUNTRY_CODE` when omitted. |
+| `countryCode` | string? | Optional calling code override such as `62`, `1`, or `44`. Digits only, no `+`. |
 | `message` | string | Message text. |
 
 Responses: `200 {"success": true}`, `400` with a descriptive error (invalid number, not registered, not connected), or `500`.
@@ -137,6 +149,7 @@ Send media from a public URL. The media type is detected from the URL's file ext
 | Field | Type | Description |
 |---|---|---|
 | `phone` | string | Recipient number (same normalization as above). |
+| `countryCode` | string? | Optional calling code override such as `62`, `1`, or `44`. Digits only, no `+`. |
 | `media` | string | `http(s)` URL of the file. |
 | `filename` | string? | Display filename for documents. Defaults to the URL basename. |
 | `caption` | string? | Caption (ignored for audio — WhatsApp does not support audio captions). |
@@ -170,6 +183,7 @@ The `.env` file is ignored by Git. Supported variables:
 | `PORT` | `5000` | HTTP port. |
 | `WA_MODE` | `single` | Tenancy mode. Use `single` for root endpoints, or `multi` to require a `/:session` prefix and enable `GET /sessions`. |
 | `WA_DEFAULT_SESSION` | `default` | Session name used when `WA_MODE=single`. Set this to an existing stored session name to reuse current credentials without re-pairing. |
+| `WA_DEFAULT_COUNTRY_CODE` | `62` | Default calling code used when an incoming phone number starts with `0`. Can be overridden per request with `countryCode`. |
 | `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path. `:memory:` is supported (used by tests). |
 | `WA_WEB_VERSION` | *(library default)* | Pin the advertised WA Web version, e.g. `2.3000.1033893291`. Escape hatch for server-side version rejections without redeploying. |
 

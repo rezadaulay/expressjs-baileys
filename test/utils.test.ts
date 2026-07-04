@@ -6,8 +6,16 @@ test('normalizePhone: awalan 0 diganti 62', () => {
     assert.equal(normalizePhone('081234567890'), '6281234567890');
 });
 
+test('normalizePhone: awalan 0 memakai country code override', () => {
+    assert.equal(normalizePhone('07911123456', '44'), '447911123456');
+});
+
 test('normalizePhone: nomor 62 dibiarkan apa adanya', () => {
     assert.equal(normalizePhone('6281234567890'), '6281234567890');
+});
+
+test('normalizePhone: nomor internasional tanpa awalan 0 dibiarkan', () => {
+    assert.equal(normalizePhone('447911123456', '62'), '447911123456');
 });
 
 test('normalizePhone: karakter non-digit dibuang (+, spasi, strip)', () => {
