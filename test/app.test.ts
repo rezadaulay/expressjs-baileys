@@ -10,11 +10,12 @@ import { SESSION_NAME_RE } from '../src/session';
 // jadi test HTTP di sini hanya mencakup jalur yang tidak menyentuh jaringan.
 
 async function withServer(
-    env: Partial<Record<'WA_MODE' | 'WA_DEFAULT_SESSION', string | undefined>>,
+    env: Partial<Record<'WA_MODE' | 'WA_DEFAULT_SESSION' | 'WA_DEFAULT_COUNTRY_CODE', string | undefined>>,
     run: (baseUrl: string) => Promise<void>
 ): Promise<void> {
     const prevMode = process.env.WA_MODE;
     const prevDefaultSession = process.env.WA_DEFAULT_SESSION;
+    const prevDefaultCountryCode = process.env.WA_DEFAULT_COUNTRY_CODE;
 
     if (env.WA_MODE === undefined) {
         delete process.env.WA_MODE;
@@ -26,6 +27,12 @@ async function withServer(
         delete process.env.WA_DEFAULT_SESSION;
     } else {
         process.env.WA_DEFAULT_SESSION = env.WA_DEFAULT_SESSION;
+    }
+
+    if (env.WA_DEFAULT_COUNTRY_CODE === undefined) {
+        delete process.env.WA_DEFAULT_COUNTRY_CODE;
+    } else {
+        process.env.WA_DEFAULT_COUNTRY_CODE = env.WA_DEFAULT_COUNTRY_CODE;
     }
 
     let server: Server | undefined;
@@ -51,6 +58,12 @@ async function withServer(
             delete process.env.WA_DEFAULT_SESSION;
         } else {
             process.env.WA_DEFAULT_SESSION = prevDefaultSession;
+        }
+
+        if (prevDefaultCountryCode === undefined) {
+            delete process.env.WA_DEFAULT_COUNTRY_CODE;
+        } else {
+            process.env.WA_DEFAULT_COUNTRY_CODE = prevDefaultCountryCode;
         }
     }
 }
@@ -86,6 +99,46 @@ test('nama session lebih dari 32 karakter ditolak di mode multi', async () => {
     await withServer({ WA_MODE: 'multi' }, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/${'a'.repeat(33)}/status`);
         assert.equal(res.status, 400);
+    });
+});
+
+test('countryCode query invalid ditolak sebelum cek koneksi WA', async () => {
+    await withServer({}, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/check-number?phone=081234567890&countryCode=%2B62`);
+        assert.equal(res.status, 400);
+        assert.deepEqual(await res.json(), { error: 'query param countryCode tidak valid' });
+    });
+});
+
+test('countryCode body invalid ditolak di send-message', async () => {
+    await withServer({}, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/send-message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: '081234567890',
+                message: 'tes',
+                countryCode: '+62'
+            })
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(await res.json(), { error: 'countryCode tidak valid' });
+    });
+});
+
+test('countryCode body invalid ditolak di send-media', async () => {
+    await withServer({}, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/send-media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: '081234567890',
+                media: 'https://example.com/file.pdf',
+                countryCode: '+62'
+            })
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(await res.json(), { error: 'countryCode tidak valid' });
     });
 });
 

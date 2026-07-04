@@ -2,7 +2,7 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import QRCode from 'qrcode';
 import { getOrCreateSession, getSessions, removeSession, WhatsAppSession } from './whatsapp.js';
-import { getTenancyConfig } from './config.js';
+import { getTenancyConfig, isValidCountryCode } from './config.js';
 import { SESSION_NAME_RE } from './session.js';
 import { normalizePhone, parseMediaAttachment } from './utils.js';
 
@@ -13,6 +13,16 @@ export function createApp(): Express {
     app.use(express.json());
 
     const getQrPath = (wa: WhatsAppSession): string => (tenancy.mode === 'multi' ? `/${wa.id}/qr` : '/qr');
+    const resolveCountryCode = (value: unknown): string | null => {
+        if (value === undefined) {
+            return tenancy.defaultCountryCode;
+        }
+        if (typeof value !== 'string') {
+            return null;
+        }
+        const normalized = value.trim();
+        return isValidCountryCode(normalized) ? normalized : null;
+    };
 
     if (tenancy.mode === 'multi') {
         app.get('/sessions', (_req, res) => {
@@ -31,17 +41,22 @@ export function createApp(): Express {
         if (tenancy.mode === 'multi' && !SESSION_NAME_RE.test(id)) {
             return res.status(400).json({ error: 'nama session tidak valid (huruf/angka/-/_, maks 32 karakter)' });
         }
-        res.locals.wa = getOrCreateSession(id);
+        res.locals.sessionId = id;
         next();
     });
 
+    const getSession = (res: express.Response): WhatsAppSession => {
+        const sessionId = res.locals.sessionId as string;
+        return getOrCreateSession(sessionId);
+    };
+
     router.get('/status', (_req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
+        const wa = getSession(res);
         res.json(wa.getStatus());
     });
 
     router.get('/qr', async (_req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
+        const wa = getSession(res);
         if (wa.getStatus().status === 'connected') {
             return res.json({ message: 'already connected' });
         }
@@ -66,12 +81,17 @@ export function createApp(): Express {
     });
 
     router.get('/check-number', async (req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
-        const normalized = normalizePhone(req.query.phone);
+        const countryCode = resolveCountryCode(req.query.countryCode);
+        if (!countryCode) {
+            return res.status(400).json({ error: 'query param countryCode tidak valid' });
+        }
+
+        const normalized = normalizePhone(req.query.phone, countryCode);
         if (!normalized) {
             return res.status(400).json({ error: 'query param phone wajib diisi dengan nomor valid' });
         }
 
+        const wa = getSession(res);
         try {
             const result = await wa.checkNumber(normalized);
             res.json({ phone: normalized, exists: result.exists });
@@ -86,18 +106,23 @@ export function createApp(): Express {
     });
 
     router.post('/send-message', async (req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
-        const { phone, message } = req.body ?? {};
+        const { phone, message, countryCode } = req.body ?? {};
 
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({ error: 'phone dan message wajib diisi' });
         }
 
-        const normalized = normalizePhone(phone);
+        const effectiveCountryCode = resolveCountryCode(countryCode);
+        if (!effectiveCountryCode) {
+            return res.status(400).json({ error: 'countryCode tidak valid' });
+        }
+
+        const normalized = normalizePhone(phone, effectiveCountryCode);
         if (!normalized) {
             return res.status(400).json({ error: 'nomor telepon tidak valid' });
         }
 
+        const wa = getSession(res);
         try {
             await wa.sendTextMessage(normalized, message);
             res.json({ success: true });
@@ -115,10 +140,14 @@ export function createApp(): Express {
     });
 
     router.post('/send-media', async (req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
-        const { phone, media, filename, caption } = req.body ?? {};
+        const { phone, media, filename, caption, countryCode } = req.body ?? {};
 
-        const normalized = normalizePhone(phone);
+        const effectiveCountryCode = resolveCountryCode(countryCode);
+        if (!effectiveCountryCode) {
+            return res.status(400).json({ error: 'countryCode tidak valid' });
+        }
+
+        const normalized = normalizePhone(phone, effectiveCountryCode);
         if (!normalized) {
             return res.status(400).json({ error: 'nomor telepon tidak valid' });
         }
@@ -132,6 +161,7 @@ export function createApp(): Express {
             return res.status(400).json({ error: 'caption harus berupa teks' });
         }
 
+        const wa = getSession(res);
         try {
             await wa.sendMediaMessage(normalized, attachment, caption);
             res.json({ success: true, kind: attachment.kind });
@@ -149,19 +179,19 @@ export function createApp(): Express {
     });
 
     router.post('/restart-socket', (_req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
+        const wa = getSession(res);
         wa.restartSocket();
         res.json({ success: true, message: 'websocket dimulai ulang, koneksi akan tersambung kembali otomatis' });
     });
 
     router.post('/restart', async (_req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
+        const wa = getSession(res);
         await wa.restart();
         res.json({ success: true, message: `sesi direset — scan QR baru di ${getQrPath(wa)}` });
     });
 
     router.post('/logout', async (_req, res) => {
-        const wa = res.locals.wa as WhatsAppSession;
+        const wa = getSession(res);
         await wa.logout();
         removeSession(wa.id);
         res.json({ success: true, message: `sesi "${wa.id}" dihapus` });
