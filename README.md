@@ -1,12 +1,13 @@
 # WhatsApp Server
 
-A lightweight, multi-tenant WhatsApp REST API server built with [Baileys](https://github.com/WhiskeySockets/Baileys) v7, Express, and TypeScript. Connect multiple WhatsApp accounts to a single server instance, each identified by a session name in the URL path, with all credentials persisted in a single SQLite file.
+A lightweight WhatsApp REST API server built with [Baileys](https://github.com/WhiskeySockets/Baileys) v7, Express, and TypeScript. By default it runs as a single-tenant server with clean root-level endpoints like `/qr` and `/send-message`. When needed, you can switch to multi-tenant mode and manage multiple WhatsApp accounts side by side via the `/:session` path prefix, with all credentials persisted in a single SQLite file.
 
 > **Disclaimer** — This project uses Baileys, an unofficial WhatsApp Web API library, and is not affiliated with, endorsed, or supported by WhatsApp/Meta. Accounts used with unofficial clients can be banned. Do not use it for spam or bulk messaging. For business-critical messaging, consider the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
 
 ## Features
 
-- **Multi-tenant** — run any number of WhatsApp accounts side by side; sessions are created on first use via the `/:session` path prefix
+- **Single-tenant by default** — root-level endpoints (`/qr`, `/status`, `/send-message`, etc.) map to one configurable default session
+- **Optional multi-tenant mode** — switch `WA_MODE=multi` to run any number of WhatsApp accounts side by side; sessions are created on first use via the `/:session` path prefix
 - **SQLite persistence** — auth credentials, Signal keys, and sent messages live in one `data/whatsapp.db` file (WAL mode); sessions survive restarts and reconnect automatically on boot
 - **QR pairing** — scan once from a self-refreshing browser page; re-pairing is only needed after a logout or reset
 - **Messaging** — send text and media (image, video, audio, document) by URL, with automatic media-type detection from the file extension
@@ -18,7 +19,7 @@ A lightweight, multi-tenant WhatsApp REST API server built with [Baileys](https:
 ## Requirements
 
 - Node.js **>= 20** (an `.nvmrc` is provided — run `nvm use`)
-- A phone with WhatsApp to pair each session
+- A phone with WhatsApp to pair the server's session, or one phone per session in multi-tenant mode
 
 ## Installation
 
@@ -41,15 +42,42 @@ npm test           # run the test suite (uses an in-memory database)
 
 The server automatically loads configuration from `.env` and listens on port `5000` by default. Environment variables supplied by the process override values from `.env`.
 
+By default:
+
+- `WA_MODE=single`
+- `WA_DEFAULT_SESSION=default`
+
+That means the server exposes root-level endpoints and stores credentials under the `default` session unless you change it.
+
 ## Quick start
 
 1. Start the server: `npm run dev`
-2. Open `http://localhost:5000/my-account/qr` in a browser — this creates the session `my-account` and shows a QR code
+2. Open `http://localhost:5000/qr` in a browser — this prepares the default session and shows a QR code
 3. On your phone: **WhatsApp → Linked Devices → Link a Device** → scan the QR
-4. Check the connection: `curl http://localhost:5000/my-account/status`
+4. Check the connection: `curl http://localhost:5000/status`
 5. Send a message:
 
 ```bash
+curl -X POST http://localhost:5000/send-message \
+  -H 'Content-Type: application/json' \
+  -d '{"phone": "081234567890", "message": "Hello from the API!"}'
+```
+
+If you already have production data under another session name, set `WA_DEFAULT_SESSION` to that exact name before first boot in single-tenant mode. That avoids re-pairing and continues using the same stored credentials.
+
+## Multi-tenant mode
+
+Set this in `.env`:
+
+```bash
+WA_MODE=multi
+```
+
+Then endpoints use a session prefix again:
+
+```bash
+curl http://localhost:5000/my-account/status
+
 curl -X POST http://localhost:5000/my-account/send-message \
   -H 'Content-Type: application/json' \
   -d '{"phone": "081234567890", "message": "Hello from the API!"}'
@@ -59,11 +87,13 @@ Session names may contain letters, digits, `-`, and `_` (max 32 characters). Eac
 
 ## API Reference
 
-All endpoints except `GET /sessions` are prefixed with the session name: `/:session/...`.
+In `WA_MODE=single` (default), operational endpoints live at the root: `/status`, `/qr`, `/send-message`, etc.
+
+In `WA_MODE=multi`, the same endpoints are prefixed with the session name: `/:session/...`.
 
 ### `GET /sessions`
 
-List all active sessions and their connection status.
+List all active sessions and their connection status. Only available when `WA_MODE=multi`.
 
 ```json
 [
@@ -71,17 +101,17 @@ List all active sessions and their connection status.
 ]
 ```
 
-### `GET /:session/status`
+### `GET /status` or `GET /:session/status`
 
 Connection state of one session: `connected`, `connecting`, or `disconnected`. Includes the WhatsApp account info when connected. Accessing a session for the first time creates it and starts connecting.
 
-### `GET /:session/qr`
+### `GET /qr` or `GET /:session/qr`
 
 - Not yet paired → an HTML page with the current QR code (auto-refreshes every 20 seconds; the QR itself is rotated by WhatsApp)
 - Already connected → `{ "message": "already connected" }`
 - QR not generated yet → `404`, retry in a few seconds
 
-### `GET /:session/check-number?phone=081234567890`
+### `GET /check-number?phone=081234567890` or `GET /:session/check-number?phone=081234567890`
 
 Check whether a number is registered on WhatsApp without sending anything.
 
@@ -89,7 +119,7 @@ Check whether a number is registered on WhatsApp without sending anything.
 { "phone": "6281234567890", "exists": true }
 ```
 
-### `POST /:session/send-message`
+### `POST /send-message` or `POST /:session/send-message`
 
 Send a text message.
 
@@ -100,7 +130,7 @@ Send a text message.
 
 Responses: `200 {"success": true}`, `400` with a descriptive error (invalid number, not registered, not connected), or `500`.
 
-### `POST /:session/send-media`
+### `POST /send-media` or `POST /:session/send-media`
 
 Send media from a public URL. The media type is detected from the URL's file extension.
 
@@ -113,15 +143,15 @@ Send media from a public URL. The media type is detected from the URL's file ext
 
 Detection: `png/jpg/jpeg` → image, `mp4` → video, `mp3/ogg/m4a` → audio, known document types (`pdf`, `csv`, `txt`, `zip`, `doc(x)`, `xls(x)`, `ppt(x)`) get their proper MIME type, anything else is sent as an `application/octet-stream` document. Media is streamed straight from the URL by Baileys — nothing is downloaded to local disk.
 
-### `POST /:session/restart-socket`
+### `POST /restart-socket` or `POST /:session/restart-socket`
 
 Close and reopen the WebSocket while keeping credentials. Use when a connection looks stuck; the session reconnects automatically.
 
-### `POST /:session/restart`
+### `POST /restart` or `POST /:session/restart`
 
 Full reset: wipe the session's credentials from the database and start fresh. A new QR must be scanned. Use when a session's encryption state is corrupted (e.g. persistent delivery failures).
 
-### `POST /:session/logout`
+### `POST /logout` or `POST /:session/logout`
 
 Log out from WhatsApp (removes the linked device on the phone), delete the session's credentials, and remove the session from the server.
 
@@ -138,6 +168,8 @@ The `.env` file is ignored by Git. Supported variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `5000` | HTTP port. |
+| `WA_MODE` | `single` | Tenancy mode. Use `single` for root endpoints, or `multi` to require a `/:session` prefix and enable `GET /sessions`. |
+| `WA_DEFAULT_SESSION` | `default` | Session name used when `WA_MODE=single`. Set this to an existing stored session name to reuse current credentials without re-pairing. |
 | `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path. `:memory:` is supported (used by tests). |
 | `WA_WEB_VERSION` | *(library default)* | Pin the advertised WA Web version, e.g. `2.3000.1033893291`. Escape hatch for server-side version rejections without redeploying. |
 
@@ -146,7 +178,9 @@ The `.env` file is ignored by Git. Supported variables:
 ```
 src/
 ├── index.ts          # Entry point: starts the HTTP server, restores saved sessions
-├── app.ts            # Express app and routes (/:session router)
+├── app.ts            # Express app and routes (root routes in single mode, /:session in multi)
+├── config.ts         # Runtime tenancy config from env
+├── session.ts        # Shared session-name validation
 ├── whatsapp.ts       # WhatsAppSession class (one Baileys socket per tenant) + session manager
 ├── auth-store.ts     # useSQLiteAuthState — Baileys auth state backed by SQLite
 ├── message-store.ts  # Sent-message store backing the getMessage retry contract
@@ -179,7 +213,7 @@ Runs on the built-in `node:test` runner via `tsx`, against an in-memory SQLite d
 | Symptom | Likely cause / fix |
 |---|---|
 | `428 Connection Terminated` before any QR | WhatsApp rejecting the client identity or version. This project already uses a browser identity; if it recurs, check recent [Baileys issues](https://github.com/WhiskeySockets/Baileys/issues) and try pinning `WA_WEB_VERSION`. |
-| Recipient sees *"waiting for this message"* | The session's Signal state is corrupted. Try `POST /:session/restart-socket` first, then `POST /:session/restart` (re-scan). Also remove stale entries under **Linked Devices** on the phone. |
+| Recipient sees *"waiting for this message"* | The session's Signal state is corrupted. Try `POST /restart-socket` first (or `POST /:session/restart-socket` in multi mode), then `POST /restart` (re-scan). Also remove stale entries under **Linked Devices** on the phone. |
 | `405 Connection Failure` | The advertised WA Web version is too old or rejected — set `WA_WEB_VERSION` to a known-good version. |
 | Session logged out on its own | The phone unlinked the device or WhatsApp invalidated the session. Credentials are wiped automatically; scan a new QR. |
 | No notifications on the paired phone | WhatsApp suppresses notifications while a linked device is "online". Set `markOnlineOnConnect: false` in the socket config if this matters for your use case. |
