@@ -9,6 +9,7 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { useSQLiteAuthState } from './auth-store.js';
+import { TenancyConfig } from './config.js';
 import { listSessionIds } from './db.js';
 import { getSentMessage, storeSentMessage } from './message-store.js';
 import { MediaAttachment } from './utils.js';
@@ -243,8 +244,15 @@ export function removeSession(id: string): void {
     sessions.delete(id);
 }
 
-// sambungkan ulang semua tenant yang punya kredensial tersimpan
-export function restoreSessions(): void {
+// saat single-tenant, hanya pulihkan/buat sesi default.
+// saat multi-tenant, pulihkan semua sesi yang punya kredensial tersimpan.
+export function restoreSessions(config: TenancyConfig): void {
+    if (config.mode === 'single') {
+        console.log(`[${config.defaultSession}] menyiapkan sesi default...`);
+        getOrCreateSession(config.defaultSession);
+        return;
+    }
+
     for (const id of listSessionIds()) {
         console.log(`[${id}] memulihkan sesi dari database...`);
         getOrCreateSession(id);

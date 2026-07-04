@@ -1,23 +1,34 @@
 import express, { Express } from 'express';
+import cors from 'cors';
 import QRCode from 'qrcode';
 import { getOrCreateSession, getSessions, removeSession, WhatsAppSession } from './whatsapp.js';
+import { getTenancyConfig } from './config.js';
+import { SESSION_NAME_RE } from './session.js';
 import { normalizePhone, parseMediaAttachment } from './utils.js';
 
-export const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/;
-
 export function createApp(): Express {
+    const tenancy = getTenancyConfig();
     const app = express();
+    app.use(cors());
     app.use(express.json());
 
-    app.get('/sessions', (_req, res) => {
-        res.json(getSessions().map((s) => s.getStatus()));
-    });
+    const getQrPath = (wa: WhatsAppSession): string => (tenancy.mode === 'multi' ? `/${wa.id}/qr` : '/qr');
+
+    if (tenancy.mode === 'multi') {
+        app.get('/sessions', (_req, res) => {
+            res.json(getSessions().map((s) => s.getStatus()));
+        });
+    } else {
+        app.all('/sessions', (_req, res) => {
+            res.status(404).json({ error: 'endpoint /sessions hanya tersedia saat WA_MODE=multi' });
+        });
+    }
 
     const router = express.Router({ mergeParams: true });
 
     router.use((req, res, next) => {
-        const id = (req.params as { session: string }).session;
-        if (!SESSION_NAME_RE.test(id)) {
+        const id = tenancy.mode === 'multi' ? (req.params as { session: string }).session : tenancy.defaultSession;
+        if (tenancy.mode === 'multi' && !SESSION_NAME_RE.test(id)) {
             return res.status(400).json({ error: 'nama session tidak valid (huruf/angka/-/_, maks 32 karakter)' });
         }
         res.locals.wa = getOrCreateSession(id);
@@ -67,7 +78,7 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di /${wa.id}/qr` });
+                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
             }
             console.error(`[${wa.id}] check-number error:`, e);
             res.status(500).json({ error: 'gagal mengecek nomor' });
@@ -93,7 +104,7 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di /${wa.id}/qr` });
+                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
             }
             if (msg === 'number not registered on WhatsApp') {
                 return res.status(400).json({ error: 'nomor tidak terdaftar di WhatsApp' });
@@ -127,7 +138,7 @@ export function createApp(): Express {
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'failed';
             if (msg === 'not connected') {
-                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di /${wa.id}/qr` });
+                return res.status(400).json({ error: `WhatsApp belum terhubung, scan QR dulu di ${getQrPath(wa)}` });
             }
             if (msg === 'number not registered on WhatsApp') {
                 return res.status(400).json({ error: 'nomor tidak terdaftar di WhatsApp' });
@@ -146,7 +157,7 @@ export function createApp(): Express {
     router.post('/restart', async (_req, res) => {
         const wa = res.locals.wa as WhatsAppSession;
         await wa.restart();
-        res.json({ success: true, message: `sesi direset — scan QR baru di /${wa.id}/qr` });
+        res.json({ success: true, message: `sesi direset — scan QR baru di ${getQrPath(wa)}` });
     });
 
     router.post('/logout', async (_req, res) => {
@@ -156,7 +167,7 @@ export function createApp(): Express {
         res.json({ success: true, message: `sesi "${wa.id}" dihapus` });
     });
 
-    app.use('/:session', router);
+    app.use(tenancy.mode === 'multi' ? '/:session' : '/', router);
 
     return app;
 }
