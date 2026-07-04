@@ -4,6 +4,12 @@ A lightweight WhatsApp REST API server built with [Baileys](https://github.com/W
 
 > **Disclaimer** — This project uses Baileys, an unofficial WhatsApp Web API library, and is not affiliated with, endorsed, or supported by WhatsApp/Meta. Accounts used with unofficial clients can be banned. Do not use it for spam or bulk messaging. For business-critical messaging, consider the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
 
+## Support
+
+If this project helps you, you can support its maintenance here:
+
+- [GitHub Sponsors: @rezadaulay](https://github.com/sponsors/rezadaulay)
+
 ## Features
 
 - **Single-tenant by default** — root-level endpoints (`/qr`, `/status`, `/send-message`, etc.) map to one configurable default session
