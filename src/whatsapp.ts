@@ -8,7 +8,7 @@ import makeWASocket, {
 } from 'baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
-import { useSQLiteAuthState } from './auth-store.js';
+import { usePersistentAuthState } from './auth-store.js';
 import { TenancyConfig } from './config.js';
 import { listSessionIds } from './db.js';
 import { getSentMessage, storeSentMessage } from './message-store.js';
@@ -47,7 +47,7 @@ export class WhatsAppSession {
     constructor(readonly id: string) {}
 
     async connect(): Promise<void> {
-        const { state, saveCreds, removeAll } = useSQLiteAuthState(this.id);
+        const { state, saveCreds, removeAll } = usePersistentAuthState(this.id);
         // WA_WEB_VERSION=2.3000.xxxxx lets us pin a fallback if WhatsApp rejects
         // a specific web version again (as happened in February 2026, Baileys #2370).
         const version = process.env.WA_WEB_VERSION
@@ -205,7 +205,7 @@ export class WhatsAppSession {
         this.sock = null;
         this.status = 'disconnected';
         this.currentQR = null;
-        useSQLiteAuthState(this.id).removeAll();
+        usePersistentAuthState(this.id).removeAll();
         this.stopped = false;
         await this.connect();
     }
@@ -220,7 +220,7 @@ export class WhatsAppSession {
         this.sock = null;
         this.status = 'disconnected';
         this.currentQR = null;
-        useSQLiteAuthState(this.id).removeAll();
+        usePersistentAuthState(this.id).removeAll();
     }
 }
 

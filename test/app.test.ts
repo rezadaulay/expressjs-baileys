@@ -1,4 +1,4 @@
-// WA_DB_PATH=:memory: is set by the npm test script and cannot be set here
+// WA_FILE_STORE_PATH is set by the npm test script and cannot be set here
 // because imports are hoisted before runtime assignment happens.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

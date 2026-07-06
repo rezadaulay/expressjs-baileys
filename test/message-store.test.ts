@@ -1,11 +1,11 @@
-// WA_DB_PATH=:memory: is set by the npm test script and cannot be set here
+// WA_FILE_STORE_PATH is set by the npm test script and cannot be set here
 // because imports are hoisted before runtime assignment happens.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { storeSentMessage, getSentMessage } from '../src/message-store';
 
-if (process.env.WA_DB_PATH !== ':memory:') {
-    throw new Error('Tests must be run via `npm test` so they use the in-memory DB, not the real database');
+if (process.env.WA_STORAGE_DRIVER !== 'file' || !process.env.WA_FILE_STORE_PATH?.includes('/tmp/')) {
+    throw new Error('Tests must be run via `npm test` so they use a temporary file store, not real data');
 }
 
 test('a stored message can be retrieved intact', () => {
