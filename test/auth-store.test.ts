@@ -1,16 +1,16 @@
-// WA_DB_PATH=:memory: is set by the npm test script and cannot be set here
+// WA_FILE_STORE_PATH is set by the npm test script and cannot be set here
 // because imports are hoisted before runtime assignment happens.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { useSQLiteAuthState } from '../src/auth-store';
-import { db, listSessionIds } from '../src/db';
+import { usePersistentAuthState } from '../src/auth-store';
+import { countAuthRows, listSessionIds } from '../src/db';
 
-if (process.env.WA_DB_PATH !== ':memory:') {
-    throw new Error('Tests must be run via `npm test` so they use the in-memory DB, not the real database');
+if (process.env.WA_STORAGE_DRIVER !== 'file' || !process.env.WA_FILE_STORE_PATH?.includes('/tmp/')) {
+    throw new Error('Tests must be run via `npm test` so they use a temporary file store, not real data');
 }
 
 test('new creds are created for a missing session', () => {
-    const { state } = useSQLiteAuthState('fresh');
+    const { state } = usePersistentAuthState('fresh');
     assert.ok(state.creds.noiseKey);
     assert.ok(state.creds.signedIdentityKey);
     // Nothing is persisted until saveCreds is called.
@@ -18,11 +18,11 @@ test('new creds are created for a missing session', () => {
 });
 
 test('saveCreds persists data and preserves Buffers across reloads', async () => {
-    const store1 = useSQLiteAuthState('roundtrip');
+    const store1 = usePersistentAuthState('roundtrip');
     await store1.saveCreds();
 
     // Reopen as if the server had restarted.
-    const store2 = useSQLiteAuthState('roundtrip');
+    const store2 = usePersistentAuthState('roundtrip');
     const orig = store1.state.creds.noiseKey;
     const loaded = store2.state.creds.noiseKey;
 
@@ -33,7 +33,7 @@ test('saveCreds persists data and preserves Buffers across reloads', async () =>
 });
 
 test('keys.set followed by keys.get returns the same data', async () => {
-    const { state } = useSQLiteAuthState('keys-test');
+    const { state } = usePersistentAuthState('keys-test');
     const keyPair = {
         private: Buffer.from('a'.repeat(32)),
         public: Buffer.from('b'.repeat(32))
@@ -48,13 +48,13 @@ test('keys.set followed by keys.get returns the same data', async () => {
 });
 
 test('keys.get returns null for a missing id', async () => {
-    const { state } = useSQLiteAuthState('keys-test');
+    const { state } = usePersistentAuthState('keys-test');
     const result = await state.keys.get('pre-key', ['999']);
     assert.equal(result['999'], null);
 });
 
 test('keys.set deletes a key when the value is null', async () => {
-    const { state } = useSQLiteAuthState('keys-delete');
+    const { state } = usePersistentAuthState('keys-delete');
     await state.keys.set({ session: { abc: Buffer.from('data') as any } });
 
     let result = await state.keys.get('session', ['abc']);
@@ -66,8 +66,8 @@ test('keys.set deletes a key when the value is null', async () => {
 });
 
 test('data is isolated between sessions', async () => {
-    const storeA = useSQLiteAuthState('tenant-a');
-    const storeB = useSQLiteAuthState('tenant-b');
+    const storeA = usePersistentAuthState('tenant-a');
+    const storeB = usePersistentAuthState('tenant-b');
 
     await storeA.state.keys.set({ session: { shared: Buffer.from('owned-by-a') as any } });
 
@@ -79,8 +79,8 @@ test('data is isolated between sessions', async () => {
 });
 
 test('removeAll only deletes its own session', async () => {
-    const storeA = useSQLiteAuthState('rm-a');
-    const storeB = useSQLiteAuthState('rm-b');
+    const storeA = usePersistentAuthState('rm-a');
+    const storeB = usePersistentAuthState('rm-b');
     await storeA.saveCreds();
     await storeB.saveCreds();
 
@@ -92,14 +92,13 @@ test('removeAll only deletes its own session', async () => {
 });
 
 test('creds reload identically after an update and a second save', async () => {
-    const store1 = useSQLiteAuthState('resave');
+    const store1 = usePersistentAuthState('resave');
     store1.state.creds.registered = true;
     await store1.saveCreds();
     await store1.saveCreds(); // upsert, not a duplicate insert
 
-    const rows = db.prepare("SELECT COUNT(*) as n FROM auth_state WHERE session_id = 'resave'").get() as { n: number };
-    assert.equal(rows.n, 1);
+    assert.equal(countAuthRows('resave'), 1);
 
-    const store2 = useSQLiteAuthState('resave');
+    const store2 = usePersistentAuthState('resave');
     assert.equal(store2.state.creds.registered, true);
 });

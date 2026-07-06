@@ -1,6 +1,6 @@
 # WhatsApp Server
 
-A lightweight WhatsApp REST API server built with [Baileys](https://github.com/WhiskeySockets/Baileys) v7, Express, and TypeScript. By default it runs as a single-tenant server with clean root-level endpoints like `/qr` and `/send-message`. When needed, you can switch to multi-tenant mode and manage multiple WhatsApp accounts side by side via the `/:session` path prefix, with all credentials persisted in a single SQLite file.
+A lightweight WhatsApp REST API server built with [Baileys](https://github.com/WhiskeySockets/Baileys) v7, Express, and TypeScript. By default it runs as a single-tenant server with clean root-level endpoints like `/qr` and `/send-message`. When needed, you can switch to multi-tenant mode and manage multiple WhatsApp accounts side by side via the `/:session` path prefix, with all credentials persisted in a local JSON file by default.
 
 > **Disclaimer** — This project uses Baileys, an unofficial WhatsApp Web API library, and is not affiliated with, endorsed, or supported by WhatsApp/Meta. Accounts used with unofficial clients can be banned. Do not use it for spam or bulk messaging. For business-critical messaging, consider the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
 
@@ -14,7 +14,8 @@ If this project helps you, you can support its maintenance here:
 
 - **Single-tenant by default** — root-level endpoints (`/qr`, `/status`, `/send-message`, etc.) map to one configurable default session
 - **Optional multi-tenant mode** — switch `WA_MODE=multi` to run any number of WhatsApp accounts side by side; sessions are created on first use via the `/:session` path prefix
-- **SQLite persistence** — auth credentials, Signal keys, and sent messages live in one `data/whatsapp.db` file (WAL mode); sessions survive restarts and reconnect automatically on boot
+- **File persistence by default** — auth credentials, Signal keys, and sent messages live in `data/whatsapp-store.json`; sessions survive restarts and reconnect automatically on boot without native build tools
+- **Optional SQLite persistence** — switch to `WA_STORAGE_DRIVER=sqlite` when you want a single SQLite database file instead
 - **QR pairing** — scan once from a self-refreshing browser page; re-pairing is only needed after a logout or reset
 - **Messaging** — send text and media (image, video, audio, document) by URL, with automatic media-type detection from the file extension
 - **Number validation** — verify that a phone number is registered on WhatsApp before (or without) sending
@@ -43,7 +44,7 @@ cp .env.example .env
 npm run dev        # development (watch mode)
 npm run build      # compile TypeScript into dist/
 npm start          # run the compiled production build
-npm test           # run the test suite (uses an in-memory database)
+npm test           # run the test suite (uses a temporary file store)
 ```
 
 The server automatically loads configuration from `.env` and listens on port `5000` by default. Environment variables supplied by the process override values from `.env`.
@@ -190,8 +191,27 @@ The `.env` file is ignored by Git. Supported variables:
 | `WA_MODE` | `single` | Tenancy mode. Use `single` for root endpoints, or `multi` to require a `/:session` prefix and enable `GET /sessions`. |
 | `WA_DEFAULT_SESSION` | `default` | Session name used when `WA_MODE=single`. Set this to an existing stored session name to reuse current credentials without re-pairing. |
 | `WA_DEFAULT_COUNTRY_CODE` | `62` | Default calling code used when an incoming phone number starts with `0`. Can be overridden per request with `countryCode`. |
-| `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path. `:memory:` is supported (used by tests). |
+| `WA_STORAGE_DRIVER` | `file` | Persistent storage backend. Use `file` to avoid native dependencies, or `sqlite` if you have installed `better-sqlite3`. |
+| `WA_FILE_STORE_PATH` | `./data/whatsapp-store.json` | JSON storage path used when `WA_STORAGE_DRIVER=file`. |
+| `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path used when `WA_STORAGE_DRIVER=sqlite`. `:memory:` is supported for local experiments. |
 | `WA_WEB_VERSION` | *(library default)* | Pin the advertised WA Web version, e.g. `2.3000.1033893291`. Escape hatch for server-side version rejections without redeploying. |
+
+### Using SQLite instead of file storage
+
+SQLite is optional so normal installs do not need native build tools such as `make`, Python, and a compiler. To enable SQLite:
+
+```bash
+npm install better-sqlite3
+```
+
+Then set:
+
+```bash
+WA_STORAGE_DRIVER=sqlite
+WA_DB_PATH=./data/whatsapp.db
+```
+
+If your deployment fails with `gyp ERR! stack Error: not found: make`, keep `WA_STORAGE_DRIVER=file` and do not install `better-sqlite3`.
 
 ## Architecture
 
@@ -202,16 +222,17 @@ src/
 ├── config.ts         # Runtime tenancy config from env
 ├── session.ts        # Shared session-name validation
 ├── whatsapp.ts       # WhatsAppSession class (one Baileys socket per tenant) + session manager
-├── auth-store.ts     # useSQLiteAuthState — Baileys auth state backed by SQLite
+├── auth-store.ts     # Baileys auth state backed by the configured persistent store
 ├── message-store.ts  # Sent-message store backing the getMessage retry contract
-├── db.ts             # better-sqlite3 connection and schema
+├── storage.ts        # file/SQLite storage drivers
+├── db.ts             # session-list compatibility helpers
 └── utils.ts          # Phone normalization, media-type detection
 ```
 
-Storage is two tables in a single SQLite file:
+Storage keeps two logical collections, regardless of backend:
 
-- `auth_state (session_id, key, value)` — credentials and Signal keys, serialized with Baileys' `BufferJSON`. The key-value design is type-agnostic, so new Baileys key types (e.g. v7's `lid-mapping`, `device-list`, `tctoken`) are stored without schema changes.
-- `sent_messages (session_id, msg_id, message, created_at)` — outgoing messages kept for 7 days so that recipient-initiated retries (`getMessage`) can re-serve them.
+- `auth_state` — credentials and Signal keys, serialized with Baileys' `BufferJSON`. The key-value design is type-agnostic, so new Baileys key types (e.g. v7's `lid-mapping`, `device-list`, `tctoken`) are stored without schema changes.
+- `sent_messages` — outgoing messages kept for 7 days so that recipient-initiated retries (`getMessage`) can re-serve them.
 
 Reliability decisions worth knowing about (all born from real debugging):
 
@@ -226,7 +247,7 @@ Reliability decisions worth knowing about (all born from real debugging):
 npm test
 ```
 
-Runs on the built-in `node:test` runner via `tsx`, against an in-memory SQLite database (`WA_DB_PATH=:memory:` is set by the npm script). Covers the SQLite auth store (Buffer round-trips, tenant isolation, deletions), the message store, phone normalization, media detection, and route validation. Anything requiring a live WhatsApp connection (pairing, actual delivery) is deliberately out of scope — verify those manually.
+Runs on the built-in `node:test` runner via `tsx`, against a temporary file store. Covers the persistent auth store (Buffer round-trips, tenant isolation, deletions), the message store, phone normalization, media detection, and route validation. Anything requiring a live WhatsApp connection (pairing, actual delivery) is deliberately out of scope — verify those manually.
 
 ## Troubleshooting
 
@@ -235,6 +256,7 @@ Runs on the built-in `node:test` runner via `tsx`, against an in-memory SQLite d
 | `428 Connection Terminated` before any QR | WhatsApp rejecting the client identity or version. This project already uses a browser identity; if it recurs, check recent [Baileys issues](https://github.com/WhiskeySockets/Baileys/issues) and try pinning `WA_WEB_VERSION`. |
 | Recipient sees *"waiting for this message"* | The session's Signal state is corrupted. Try `POST /restart-socket` first (or `POST /:session/restart-socket` in multi mode), then `POST /restart` (re-scan). Also remove stale entries under **Linked Devices** on the phone. |
 | `405 Connection Failure` | The advertised WA Web version is too old or rejected — set `WA_WEB_VERSION` to a known-good version. |
+| `gyp ERR! stack Error: not found: make` during install | A native package is being installed, usually SQLite. The default `WA_STORAGE_DRIVER=file` path does not require `better-sqlite3`; remove it unless you intentionally use SQLite, or install system build tools before `npm install better-sqlite3`. |
 | Session logged out on its own | The phone unlinked the device or WhatsApp invalidated the session. Credentials are wiped automatically; scan a new QR. |
 | No notifications on the paired phone | WhatsApp suppresses notifications while a linked device is "online". Set `markOnlineOnConnect: false` in the socket config if this matters for your use case. |
 
