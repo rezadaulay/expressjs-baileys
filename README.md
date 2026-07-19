@@ -177,6 +177,29 @@ Log out from WhatsApp (removes the linked device on the phone), delete the sessi
 
 ## Configuration
 
+## Incoming message webhooks
+
+Enable reliable delivery with `WA_WEBHOOK_ENABLED=true`, `WA_WEBHOOK_URL`, and a non-empty `WA_WEBHOOK_SECRET`. Optional settings are `WA_WEBHOOK_TIMEOUT_MS` (10000), `WA_WEBHOOK_MAX_ATTEMPTS` (8), `WA_WEBHOOK_INCLUDE_GROUPS` (false), `WA_WEBHOOK_INCLUDE_FROM_ME` (false), and `WA_WEBHOOK_PROCESS_APPEND` (true).
+
+Incoming `notify` and eligible `append` messages are written to a persistent outbox before any HTTP request. The dispatcher sends the stored JSON body with `X-WA-Event`, `X-WA-Event-ID`, `X-WA-Timestamp` (milliseconds), and `X-WA-Signature: sha256=<hex>`. Verify the signature as HMAC-SHA256 over `<timestamp>.<raw request body>` and reject timestamps older than five minutes:
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+const timestamp = req.get('X-WA-Timestamp');
+if (Math.abs(Date.now() - Number(timestamp)) > 300_000) throw new Error('stale webhook');
+const expected = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest();
+const supplied = Buffer.from(req.get('X-WA-Signature').replace(/^sha256=/, ''), 'hex');
+if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) throw new Error('bad signature');
+```
+
+Payloads use event `whatsapp.message.received`, version `1.0`, and contain message text or media metadata only (never downloaded media/base64). JIDs, including `@lid` values, are opaque identifiers. Retry delays are immediate, 5s, 15s, 1m, 5m, 15m, 1h, then 6h; retryable failures include network/timeouts, 408, 425, 429, and 5xx. Delivery is at-least-once, so receivers must deduplicate by `X-WA-Event-ID`/`event_id`.
+
+The persistent `webhook_enabled_at` cutoff prevents pre-enable history from `append` being queued. It deliberately remains across restarts; remove that meta key manually to reset it. A newly paired session can still emit post-cutoff history as `delivery_context: "sync"`. File storage rewrites its JSON file per event and is intended for normal traffic; use SQLite for busy deployments. Message edits are currently first-write-wins under the message/event unique key.
+
+## Idempotent sends
+
+`POST /send-message` and `POST /send-media` accept an optional `idempotencyKey` string (1–255 characters). A repeated identical completed request returns the cached body plus `duplicate: true` without sending again. A same-key request still processing returns 409; reuse with different content returns 422. Records are retained for seven days. Because the WhatsApp send and idempotency update are not one transaction, a crash leaves a small ambiguity window; processing records become retryable after five minutes.
+
 Copy the provided template before starting the server:
 
 ```bash
@@ -195,6 +218,14 @@ The `.env` file is ignored by Git. Supported variables:
 | `WA_FILE_STORE_PATH` | `./data/whatsapp-store.json` | JSON storage path used when `WA_STORAGE_DRIVER=file`. |
 | `WA_DB_PATH` | `./data/whatsapp.db` | SQLite database path used when `WA_STORAGE_DRIVER=sqlite`. `:memory:` is supported for local experiments. |
 | `WA_WEB_VERSION` | *(library default)* | Pin the advertised WA Web version, e.g. `2.3000.1033893291`. Escape hatch for server-side version rejections without redeploying. |
+| `WA_WEBHOOK_ENABLED` | `false` | Enable persistent incoming-message webhook delivery. |
+| `WA_WEBHOOK_URL` | — | Global HTTP/HTTPS receiver URL; required when enabled. |
+| `WA_WEBHOOK_SECRET` | — | HMAC signing secret; required when enabled. |
+| `WA_WEBHOOK_TIMEOUT_MS` | `10000` | Per-attempt HTTP timeout. |
+| `WA_WEBHOOK_MAX_ATTEMPTS` | `8` | Maximum delivery attempts. |
+| `WA_WEBHOOK_INCLUDE_GROUPS` | `false` | Include group messages. |
+| `WA_WEBHOOK_INCLUDE_FROM_ME` | `false` | Include messages sent by this account. |
+| `WA_WEBHOOK_PROCESS_APPEND` | `true` | Capture post-cutoff history-sync messages. |
 
 ### Using SQLite instead of file storage
 
@@ -229,7 +260,7 @@ src/
 └── utils.ts          # Phone normalization, media-type detection
 ```
 
-Storage keeps two logical collections, regardless of backend:
+Storage keeps auth, sent messages, webhook outbox/meta, and idempotent request collections in both backends:
 
 - `auth_state` — credentials and Signal keys, serialized with Baileys' `BufferJSON`. The key-value design is type-agnostic, so new Baileys key types (e.g. v7's `lid-mapping`, `device-list`, `tctoken`) are stored without schema changes.
 - `sent_messages` — outgoing messages kept for 7 days so that recipient-initiated retries (`getMessage`) can re-serve them.

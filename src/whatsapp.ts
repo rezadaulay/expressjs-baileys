@@ -13,6 +13,7 @@ import { TenancyConfig } from './config.js';
 import { listSessionIds } from './db.js';
 import { getSentMessage, storeSentMessage } from './message-store.js';
 import { MediaAttachment } from './utils.js';
+import { handleMessagesUpsert } from './webhook/webhook-store.js';
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
@@ -113,6 +114,10 @@ export class WhatsAppSession {
                 }
             }
         });
+        this.sock.ev.on('messages.upsert', (upsert) => {
+            if (upsert.type !== 'notify' && upsert.type !== 'append') return;
+            handleMessagesUpsert(this.id, this.sock?.user?.id, upsert);
+        });
     }
 
     getStatus(): { session: string; status: ConnectionStatus; user?: { id: string; name?: string } } {
@@ -144,23 +149,24 @@ export class WhatsAppSession {
     }
 
     // Send and persist the message so getMessage can replay it during retries.
-    private async sendAndStore(jid: string, content: AnyMessageContent): Promise<void> {
+    private async sendAndStore(jid: string, content: AnyMessageContent): Promise<string | null> {
         const sent = await this.sock!.sendMessage(jid, content);
         if (sent?.key?.id && sent.message) {
             storeSentMessage(this.id, sent.key.id, sent.message);
         }
+        return sent?.key?.id ?? null;
     }
 
-    async sendTextMessage(phone: string, message: string): Promise<void> {
+    async sendTextMessage(phone: string, message: string): Promise<{ messageId: string | null }> {
         const { exists, jid } = await this.checkNumber(phone);
         if (!exists || !jid) {
             throw new Error('number not registered on WhatsApp');
         }
 
-        await this.sendAndStore(jid, { text: message });
+        return { messageId: await this.sendAndStore(jid, { text: message }) };
     }
 
-    async sendMediaMessage(phone: string, media: MediaAttachment, caption = ''): Promise<void> {
+    async sendMediaMessage(phone: string, media: MediaAttachment, caption = ''): Promise<{ messageId: string | null }> {
         const { exists, jid } = await this.checkNumber(phone);
         if (!exists || !jid) {
             throw new Error('number not registered on WhatsApp');
@@ -169,22 +175,19 @@ export class WhatsAppSession {
         const url = { url: media.url };
         switch (media.kind) {
             case 'image':
-                await this.sendAndStore(jid, { image: url, caption });
-                break;
+                return { messageId: await this.sendAndStore(jid, { image: url, caption }) };
             case 'video':
-                await this.sendAndStore(jid, { video: url, caption });
-                break;
+                return { messageId: await this.sendAndStore(jid, { video: url, caption }) };
             case 'audio':
                 // Audio does not support captions in WhatsApp.
-                await this.sendAndStore(jid, { audio: url, mimetype: media.mimetype });
-                break;
+                return { messageId: await this.sendAndStore(jid, { audio: url, mimetype: media.mimetype }) };
             default:
-                await this.sendAndStore(jid, {
+                return { messageId: await this.sendAndStore(jid, {
                     document: url,
                     mimetype: media.mimetype,
                     fileName: media.filename,
                     caption
-                });
+                }) };
         }
     }
 
