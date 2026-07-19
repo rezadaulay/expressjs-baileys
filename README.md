@@ -192,7 +192,7 @@ const supplied = Buffer.from(req.get('X-WA-Signature').replace(/^sha256=/, ''), 
 if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) throw new Error('bad signature');
 ```
 
-Payloads use event `whatsapp.message.received`, version `1.0`, and contain message text or media metadata only (never downloaded media/base64). JIDs, including `@lid` values, are opaque identifiers. Retry delays are immediate, 5s, 15s, 1m, 5m, 15m, 1h, then 6h; retryable failures include network/timeouts, 408, 425, 429, and 5xx. Delivery is at-least-once, so receivers must deduplicate by `X-WA-Event-ID`/`event_id`.
+Payloads use event `whatsapp.message.received`, version `1.0`, and contain message text or media metadata only (never downloaded media/base64). JIDs, including `@lid` values, are opaque identifiers. If Baileys has a saved LID-to-phone mapping, the payload also includes optional `sender_pn_jid` and `sender_phone` fields; otherwise only the opaque `sender_id` is available. Retry delays are immediate, 5s, 15s, 1m, 5m, 15m, 1h, then 6h; retryable failures include network/timeouts, 408, 425, 429, and 5xx. Delivery is at-least-once, so receivers must deduplicate by `X-WA-Event-ID`/`event_id`.
 
 The persistent `webhook_enabled_at` cutoff prevents pre-enable history from `append` being queued. It deliberately remains across restarts; remove that meta key manually to reset it. A newly paired session can still emit post-cutoff history as `delivery_context: "sync"`. File storage rewrites its JSON file per event and is intended for normal traffic; use SQLite for busy deployments. Message edits are currently first-write-wins under the message/event unique key.
 
