@@ -143,7 +143,8 @@ Send a text message.
 
 | Field | Type | Description |
 |---|---|---|
-| `phone` | string | Recipient number. Non-digits are stripped; a leading `0` is rewritten using `countryCode`, or `WA_DEFAULT_COUNTRY_CODE` when omitted. |
+| `phone` | string? | Recipient number. Non-digits are stripped; a leading `0` is rewritten using `countryCode`, or `WA_DEFAULT_COUNTRY_CODE` when omitted. Required unless `jid`/`chatId` is provided. |
+| `jid` / `chatId` | string? | Direct WhatsApp JID target such as `6281234567890@s.whatsapp.net`, `159700305883342@lid`, or `120363...@g.us`. Use the webhook `chat_id` to reply to incoming messages. |
 | `countryCode` | string? | Optional calling code override such as `62`, `1`, or `44`. Digits only, no `+`. |
 | `message` | string | Message text. |
 
@@ -155,7 +156,8 @@ Send media from a public URL. The media type is detected from the URL's file ext
 
 | Field | Type | Description |
 |---|---|---|
-| `phone` | string | Recipient number (same normalization as above). |
+| `phone` | string? | Recipient number (same normalization as above). Required unless `jid`/`chatId` is provided. |
+| `jid` / `chatId` | string? | Direct WhatsApp JID target. Use the webhook `chat_id` to reply to incoming messages, including `@lid` chats. |
 | `countryCode` | string? | Optional calling code override such as `62`, `1`, or `44`. Digits only, no `+`. |
 | `media` | string | `http(s)` URL of the file. |
 | `filename` | string? | Display filename for documents. Defaults to the URL basename. |

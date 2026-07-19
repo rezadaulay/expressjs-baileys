@@ -126,6 +126,21 @@ test('invalid body countryCode is rejected in send-message', async () => {
     });
 });
 
+test('invalid jid is rejected in send-message before opening a WhatsApp session', async () => {
+    await withServer({}, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/send-message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jid: 'not-a-jid',
+                message: 'test'
+            })
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(await res.json(), { error: 'invalid jid' });
+    });
+});
+
 test('invalid body countryCode is rejected in send-media', async () => {
     await withServer({}, async (baseUrl) => {
         const res = await fetch(`${baseUrl}/send-media`, {
@@ -139,6 +154,21 @@ test('invalid body countryCode is rejected in send-media', async () => {
         });
         assert.equal(res.status, 400);
         assert.deepEqual(await res.json(), { error: 'invalid countryCode' });
+    });
+});
+
+test('invalid jid is rejected in send-media before opening a WhatsApp session', async () => {
+    await withServer({}, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/send-media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chatId: 'abc@lid',
+                media: 'https://example.com/file.pdf'
+            })
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(await res.json(), { error: 'invalid jid' });
     });
 });
 

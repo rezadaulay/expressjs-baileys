@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePhone, parseMediaAttachment } from '../src/utils';
+import { normalizePhone, normalizeWhatsAppJid, parseMediaAttachment } from '../src/utils';
 
 test('normalizePhone: leading 0 is replaced with 62', () => {
     assert.equal(normalizePhone('081234567890'), '6281234567890');
@@ -39,6 +39,15 @@ test('normalizePhone: non-string input is rejected', () => {
 test('normalizePhone: strings without digits are rejected', () => {
     assert.equal(normalizePhone('abc'), null);
     assert.equal(normalizePhone(''), null);
+});
+
+test('normalizeWhatsAppJid accepts direct reply targets', () => {
+    assert.equal(normalizeWhatsAppJid('6281210002964@s.whatsapp.net'), '6281210002964@s.whatsapp.net');
+    assert.equal(normalizeWhatsAppJid('159700305883342@lid'), '159700305883342@lid');
+    assert.equal(normalizeWhatsAppJid('159700305883342:2@lid'), '159700305883342:2@lid');
+    assert.equal(normalizeWhatsAppJid('120363123456789@g.us'), '120363123456789@g.us');
+    assert.equal(normalizeWhatsAppJid('abc@lid'), null);
+    assert.equal(normalizeWhatsAppJid('6281210002964@evil.test'), null);
 });
 
 test('parseMediaAttachment: detects kind from the extension', () => {

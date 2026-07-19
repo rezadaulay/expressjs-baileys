@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { getOrCreateSession, getSessions, removeSession, WhatsAppSession } from './whatsapp.js';
 import { getTenancyConfig, isValidCountryCode } from './config.js';
 import { SESSION_NAME_RE } from './session.js';
-import { normalizePhone, parseMediaAttachment } from './utils.js';
+import { normalizePhone, normalizeWhatsAppJid, parseMediaAttachment } from './utils.js';
 import { beginIdempotentRequest, completeIdempotentRequest, computeRequestHash, failIdempotentRequest } from './idempotency.js';
 
 export function createApp(): Express {
@@ -105,20 +105,26 @@ export function createApp(): Express {
     });
 
     router.post('/send-message', async (req, res) => {
-        const { phone, message, countryCode, idempotencyKey } = req.body ?? {};
+        const { phone, jid, chatId, message, countryCode, idempotencyKey } = req.body ?? {};
 
         if (typeof message !== 'string' || !message.trim()) {
-            return res.status(400).json({ error: 'phone and message are required' });
+            return res.status(400).json({ error: 'message is required' });
         }
 
-        const effectiveCountryCode = resolveCountryCode(countryCode);
-        if (!effectiveCountryCode) {
-            return res.status(400).json({ error: 'invalid countryCode' });
-        }
-
-        const normalized = normalizePhone(phone, effectiveCountryCode);
-        if (!normalized) {
-            return res.status(400).json({ error: 'invalid phone number' });
+        const normalizedJid = normalizeWhatsAppJid(jid ?? chatId);
+        let normalizedPhone: string | null = null;
+        if (!normalizedJid) {
+            if (jid !== undefined || chatId !== undefined) {
+                return res.status(400).json({ error: 'invalid jid' });
+            }
+            const effectiveCountryCode = resolveCountryCode(countryCode);
+            if (!effectiveCountryCode) {
+                return res.status(400).json({ error: 'invalid countryCode' });
+            }
+            normalizedPhone = normalizePhone(phone, effectiveCountryCode);
+            if (!normalizedPhone) {
+                return res.status(400).json({ error: 'phone or jid is required' });
+            }
         }
 
         if (idempotencyKey !== undefined && (typeof idempotencyKey !== 'string' || idempotencyKey.length < 1 || idempotencyKey.length > 255)) {
@@ -127,7 +133,7 @@ export function createApp(): Express {
 
         const sessionId = res.locals.sessionId as string;
         if (idempotencyKey) {
-            const check = beginIdempotentRequest(sessionId, idempotencyKey, computeRequestHash({ phone: normalized, message }));
+            const check = beginIdempotentRequest(sessionId, idempotencyKey, computeRequestHash({ target: normalizedJid ? { jid: normalizedJid } : { phone: normalizedPhone }, message }));
             if (check.action === 'replay') return res.json({ ...JSON.parse(check.responseBody), duplicate: true });
             if (check.action === 'in_flight') return res.status(409).json({ error: 'a request with this idempotencyKey is still processing' });
             if (check.action === 'mismatch') return res.status(422).json({ error: 'idempotencyKey was already used with a different request' });
@@ -135,8 +141,10 @@ export function createApp(): Express {
 
         const wa = getSession(res);
         try {
-            const { messageId } = await wa.sendTextMessage(normalized, message);
-            const body = { success: true, messageId };
+            const { messageId } = normalizedJid
+                ? await wa.sendTextMessageToJid(normalizedJid, message)
+                : await wa.sendTextMessage(normalizedPhone!, message);
+            const body = { success: true, ...(normalizedJid ? { jid: normalizedJid } : { phone: normalizedPhone }), messageId };
             if (idempotencyKey) completeIdempotentRequest(sessionId, idempotencyKey, JSON.stringify(body), messageId);
             res.json(body);
         } catch (e) {
@@ -158,16 +166,22 @@ export function createApp(): Express {
     });
 
     router.post('/send-media', async (req, res) => {
-        const { phone, media, filename, caption, countryCode, idempotencyKey } = req.body ?? {};
+        const { phone, jid, chatId, media, filename, caption, countryCode, idempotencyKey } = req.body ?? {};
 
-        const effectiveCountryCode = resolveCountryCode(countryCode);
-        if (!effectiveCountryCode) {
-            return res.status(400).json({ error: 'invalid countryCode' });
-        }
-
-        const normalized = normalizePhone(phone, effectiveCountryCode);
-        if (!normalized) {
-            return res.status(400).json({ error: 'invalid phone number' });
+        const normalizedJid = normalizeWhatsAppJid(jid ?? chatId);
+        let normalizedPhone: string | null = null;
+        if (!normalizedJid) {
+            if (jid !== undefined || chatId !== undefined) {
+                return res.status(400).json({ error: 'invalid jid' });
+            }
+            const effectiveCountryCode = resolveCountryCode(countryCode);
+            if (!effectiveCountryCode) {
+                return res.status(400).json({ error: 'invalid countryCode' });
+            }
+            normalizedPhone = normalizePhone(phone, effectiveCountryCode);
+            if (!normalizedPhone) {
+                return res.status(400).json({ error: 'phone or jid is required' });
+            }
         }
 
         const attachment = parseMediaAttachment(media, filename);
@@ -184,7 +198,7 @@ export function createApp(): Express {
         }
         const sessionId = res.locals.sessionId as string;
         if (idempotencyKey) {
-            const check = beginIdempotentRequest(sessionId, idempotencyKey, computeRequestHash({ phone: normalized, media, filename, caption, kind: attachment.kind }));
+            const check = beginIdempotentRequest(sessionId, idempotencyKey, computeRequestHash({ target: normalizedJid ? { jid: normalizedJid } : { phone: normalizedPhone }, media, filename, caption, kind: attachment.kind }));
             if (check.action === 'replay') return res.json({ ...JSON.parse(check.responseBody), duplicate: true });
             if (check.action === 'in_flight') return res.status(409).json({ error: 'a request with this idempotencyKey is still processing' });
             if (check.action === 'mismatch') return res.status(422).json({ error: 'idempotencyKey was already used with a different request' });
@@ -192,8 +206,10 @@ export function createApp(): Express {
 
         const wa = getSession(res);
         try {
-            const { messageId } = await wa.sendMediaMessage(normalized, attachment, caption);
-            const body = { success: true, kind: attachment.kind, messageId };
+            const { messageId } = normalizedJid
+                ? await wa.sendMediaMessageToJid(normalizedJid, attachment, caption)
+                : await wa.sendMediaMessage(normalizedPhone!, attachment, caption);
+            const body = { success: true, kind: attachment.kind, ...(normalizedJid ? { jid: normalizedJid } : { phone: normalizedPhone }), messageId };
             if (idempotencyKey) completeIdempotentRequest(sessionId, idempotencyKey, JSON.stringify(body), messageId);
             res.json(body);
         } catch (e) {

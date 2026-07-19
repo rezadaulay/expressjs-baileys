@@ -11,6 +11,17 @@ export function normalizePhone(phone: unknown, countryCode = '62'): string | nul
     return /^\d{8,15}$/.test(normalized) ? normalized : null;
 }
 
+export function normalizeWhatsAppJid(jid: unknown): string | null {
+    if (typeof jid !== 'string') {
+        return null;
+    }
+    const normalized = jid.trim();
+    if (!/^[0-9]+(?::[0-9]+)?@(s\.whatsapp\.net|lid|g\.us)$/.test(normalized)) {
+        return null;
+    }
+    return normalized;
+}
+
 export type MediaKind = 'image' | 'video' | 'audio' | 'document';
 
 export interface MediaAttachment {

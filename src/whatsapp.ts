@@ -166,10 +166,26 @@ export class WhatsAppSession {
         return { messageId: await this.sendAndStore(jid, { text: message }) };
     }
 
+    async sendTextMessageToJid(jid: string, message: string): Promise<{ messageId: string | null }> {
+        if (this.status !== 'connected' || !this.sock) {
+            throw new Error('not connected');
+        }
+
+        return { messageId: await this.sendAndStore(jid, { text: message }) };
+    }
+
     async sendMediaMessage(phone: string, media: MediaAttachment, caption = ''): Promise<{ messageId: string | null }> {
         const { exists, jid } = await this.checkNumber(phone);
         if (!exists || !jid) {
             throw new Error('number not registered on WhatsApp');
+        }
+
+        return this.sendMediaMessageToJid(jid, media, caption);
+    }
+
+    async sendMediaMessageToJid(jid: string, media: MediaAttachment, caption = ''): Promise<{ messageId: string | null }> {
+        if (this.status !== 'connected' || !this.sock) {
+            throw new Error('not connected');
         }
 
         const url = { url: media.url };
