@@ -1,0 +1,5 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { beginIdempotentRequest, completeIdempotentRequest, computeRequestHash, failIdempotentRequest } from '../src/idempotency.js';
+test('idempotency proceeds, blocks in-flight, replays, and rejects mismatches',()=>{const session=`idem-${Date.now()}`,key='k',hash=computeRequestHash({b:2,a:1});assert.equal(hash,computeRequestHash({a:1,b:2}));assert.deepEqual(beginIdempotentRequest(session,key,hash),{action:'proceed'});assert.deepEqual(beginIdempotentRequest(session,key,hash),{action:'in_flight'});completeIdempotentRequest(session,key,'{"success":true}','m1');assert.deepEqual(beginIdempotentRequest(session,key,hash),{action:'replay',responseBody:'{"success":true}'});assert.deepEqual(beginIdempotentRequest(session,key,computeRequestHash({a:2})),{action:'mismatch'});});
+test('failed requests can be retried with the same hash',()=>{const session=`retry-${Date.now()}`,hash=computeRequestHash({a:1});assert.deepEqual(beginIdempotentRequest(session,'k',hash),{action:'proceed'});failIdempotentRequest(session,'k','{}');assert.deepEqual(beginIdempotentRequest(session,'k',hash),{action:'proceed'});});

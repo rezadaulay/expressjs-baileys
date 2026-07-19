@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { store } from '../src/storage.js';
+
+test('outbox deduplicates, claims due rows, and records transitions',()=>{const suffix=randomUUID(),now=Date.now();const make=(id:string,due:number)=>({id,sessionId:`s-${suffix}`,messageId:id,eventType:'whatsapp.message.received',payload:'{}',nextAttemptAt:due,createdAt:now});const first=make(`a-${suffix}`,now);assert.equal(store.insertOutboxEvent(first),true);assert.equal(store.insertOutboxEvent(first),false);assert.equal(store.insertOutboxEvent(make(`b-${suffix}`,now+60000)),true);const claimed=store.claimDueOutboxEvents(now,100);const own=claimed.find(row=>row.id===first.id);assert.equal(own?.status,'processing');assert.ok(store.resetProcessingOutboxEvents()>=1);const again=store.claimDueOutboxEvents(now,100).find(row=>row.id===first.id);assert.ok(again);store.markOutboxDelivered(again.id,1,now);});
+
+test('meta and idempotency primitives persist values',()=>{const suffix=randomUUID();store.setMeta(`test-${suffix}`,'value');assert.equal(store.getMeta(`test-${suffix}`),'value');assert.equal(store.insertIdempotentRequest({sessionId:suffix,idempotencyKey:'key',requestHash:'hash',createdAt:Date.now()}),true);assert.equal(store.insertIdempotentRequest({sessionId:suffix,idempotencyKey:'key',requestHash:'hash',createdAt:Date.now()}),false);store.updateIdempotentRequest(suffix,'key',{status:'completed',responseBody:'{}',messageId:'m',completedAt:Date.now()});assert.equal(store.getIdempotentRequest(suffix,'key')?.status,'completed');});
